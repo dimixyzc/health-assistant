@@ -1,0 +1,12 @@
+.env
+data/
+__pycache__/
+*.pyc
+*.pyo
+.garminconnect
+google_fit_token.json
+*.db
+.DS_Store
+logs/
+.venv/
+venv/

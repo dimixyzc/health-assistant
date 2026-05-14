@@ -1,0 +1,17 @@
+services:
+  health-assistant:
+    build: .
+    container_name: health-assistant
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/data
+    environment:
+      - TZ=Europe/Berlin
+      - DATA_DIR=/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

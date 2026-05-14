@@ -1,0 +1,37 @@
+name: "Dimi Health Assistant"
+version: "1.0.0"
+slug: "dimi_health_assistant"
+description: "Persönlicher Fitness-Bot: Garmin + Renpho + Google Fit + OpenAI"
+url: "https://github.com/dimitri-carbone/health-assistant"
+startup: application
+init: false
+map:
+  - data:rw
+arch:
+  - amd64
+options:
+  telegram_bot_token: ""
+  telegram_chat_id: ""
+  garmin_email: ""
+  garmin_password: ""
+  renpho_email: ""
+  renpho_password: ""
+  google_client_id: ""
+  google_client_secret: ""
+  openai_api_key: ""
+  openai_model: "gpt-5.5"
+  renpho_reminder_days: 5
+  timezone: "Europe/Berlin"
+schema:
+  telegram_bot_token: str
+  telegram_chat_id: str
+  garmin_email: str
+  garmin_password: str
+  renpho_email: str
+  renpho_password: str
+  google_client_id: str
+  google_client_secret: str
+  openai_api_key: str
+  openai_model: str?
+  renpho_reminder_days: int?
+  timezone: str?
