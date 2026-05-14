@@ -7,6 +7,7 @@ startup: application
 init: false
 map:
   - data:rw
+  - share:rw
 arch:
   - amd64
 options:

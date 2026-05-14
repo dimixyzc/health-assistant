@@ -33,4 +33,10 @@ DATA_DIR="/data"
 bashio::log.info "Starting Dimi Health Assistant v1.0.0"
 bashio::log.info "TZ: ${TZ} | Renpho reminder nach: ${RENPHO_REMINDER_DAYS} Tagen"
 
+# Google Fit Token von /share nach /data kopieren falls vorhanden
+if [ -f /share/google_fit_token.json ]; then
+    cp /share/google_fit_token.json /data/google_fit_token.json
+    bashio::log.info "Google Fit Token aus /share übernommen"
+fi
+
 exec python3 -u /opt/health-assistant/main.py
