@@ -1,7 +1,7 @@
 """
-Deduplication: Garmin-Schritte haben Priorität.
-Google Fit wird nur als Fallback genutzt wenn Garmin keine Daten liefert
-(z.B. Uhr nicht getragen).
+Deduplication: nimmt immer den höheren Schrittwert aus Garmin oder Google Fit.
+Garmin kann durch unvollständigen Sync niedriger sein — Google Fit zählt
+zusätzlich Telefon-Schritte und ist oft aktueller.
 """
 from typing import Optional
 
@@ -16,10 +16,16 @@ def merge_steps(
 ) -> tuple[int, str]:
     """
     Gibt (schritte, quelle) zurück.
+    Wenn beide Quellen Daten haben → höheren Wert nehmen.
     Quelle ist 'garmin', 'google_fit' oder 'unbekannt'.
     """
     garmin = garmin_steps or 0
     gfit = gfit_steps or 0
+
+    if garmin > 0 and gfit > 0:
+        if gfit > garmin:
+            return gfit, "google_fit"
+        return garmin, "garmin"
 
     if garmin >= _GARMIN_WORN_THRESHOLD:
         return garmin, "garmin"
