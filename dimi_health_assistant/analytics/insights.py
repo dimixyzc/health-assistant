@@ -8,6 +8,7 @@ from typing import Optional
 from connectors import garmin as garmin_conn
 from connectors import renpho as renpho_conn
 from connectors import google_fit as gfit_conn
+from analytics import metrics
 from analytics.deduplicator import merge_steps
 from storage import database as db
 from config import settings
@@ -53,7 +54,7 @@ async def get_daily_snapshot(for_date: Optional[str] = None) -> dict:
 
     steps, steps_source = merge_steps(stats.get("steps"), gfit_steps)
 
-    return {
+    snapshot = {
         "date": target,
         "steps": steps,
         "steps_source": steps_source,
@@ -74,6 +75,11 @@ async def get_daily_snapshot(for_date: Optional[str] = None) -> dict:
         "training_readiness_level": readiness.get("level"),
         "training_readiness_feedback": readiness.get("feedback"),
     }
+    snapshot["readiness"] = metrics.calculate_readiness(
+        snapshot,
+        sleep_goal_minutes=settings.sleep_goal_minutes,
+    )
+    return snapshot
 
 
 async def get_weekly_summary() -> dict:
@@ -110,11 +116,20 @@ async def get_weekly_summary() -> dict:
     weight_trend = safe(weight_trend, {"available": False})
     sleep_days = [safe(s, {}) for s in sleep_results]
 
-    gym_days = sum(1 for a in activities if _is_gym(a["type"]))
-    run_days = sum(1 for a in activities if _is_run(a["type"]))
+    activities = metrics.add_activity_loads(activities)
+    gym_days = sum(1 for a in activities if _is_gym(a.get("type", "")))
+    run_days = sum(1 for a in activities if _is_run(a.get("type", "")))
     total_distance = round(sum(a.get("distance_km") or 0 for a in activities), 1)
     total_duration = sum(a.get("duration_minutes") or 0 for a in activities)
     total_calories = sum(a.get("calories") or 0 for a in activities)
+    total_load = round(sum(a.get("load") or 0 for a in activities), 1)
+    training_trend = metrics.training_trend(activities)
+    weekly_goals = metrics.weekly_goal_summary(
+        gym_days,
+        run_days,
+        gym_goal=settings.weekly_gym_goal,
+        run_goal=settings.weekly_run_goal,
+    )
 
     # Schlaf-Durchschnitte
     sleep_durations = [s.get("duration_minutes") for s in sleep_days if s.get("duration_minutes")]
@@ -134,6 +149,9 @@ async def get_weekly_summary() -> dict:
         "total_distance_km": total_distance,
         "total_duration_minutes": total_duration,
         "total_calories_burned": total_calories,
+        "total_load": total_load,
+        "training_trend": training_trend,
+        **weekly_goals,
         "activities": activities,
         "avg_sleep_minutes": avg(sleep_durations),
         "avg_sleep_score": avg(sleep_scores),
@@ -142,6 +160,7 @@ async def get_weekly_summary() -> dict:
         "today_hrv": snapshot.get("avg_hrv"),
         "today_body_battery": snapshot.get("body_battery"),
         "today_resting_hr": snapshot.get("resting_hr"),
+        "snapshot": snapshot,
         # Renpho weight trend
         "weight_available": weight_trend.get("available", False),
         "latest_weight": weight_trend.get("latest_weight"),
@@ -172,7 +191,7 @@ async def get_weight_trend(days: int = 30) -> dict:
     latest = history[-1]
     oldest = history[0]
 
-    return {
+    trend = {
         "available": True,
         "measurements_count": len(history),
         "latest_date": latest.get("date"),
@@ -194,6 +213,29 @@ async def get_weight_trend(days: int = 30) -> dict:
         "muscle_delta": round(latest.get("muscle_mass_kg", 0) - oldest.get("muscle_mass_kg", 0), 2) if muscles else None,
         "avg_weight": round(sum(weights) / len(weights), 2) if weights else None,
         "period_days": days,
+    }
+    trend.update(metrics.body_trend(history, days))
+    return trend
+
+
+async def get_training_plan() -> dict:
+    """Erstellt den tagesaktuellen Plan aus Readiness und Wochenziel."""
+    weekly = await get_weekly_summary()
+    if isinstance(weekly, Exception):
+        weekly = {}
+    snapshot = weekly.get("snapshot") or {}
+
+    readiness = metrics.calculate_readiness(
+        snapshot,
+        sleep_goal_minutes=settings.sleep_goal_minutes,
+        recent_activities=weekly.get("activities") or [],
+    )
+    snapshot["readiness"] = readiness
+    return {
+        "snapshot": snapshot,
+        "weekly": weekly,
+        "readiness": readiness,
+        "suggested_session": _suggest_session(readiness, weekly),
     }
 
 
@@ -222,3 +264,21 @@ def _is_gym(activity_type: str) -> bool:
 def _is_run(activity_type: str) -> bool:
     run_types = {"running", "trail_running", "treadmill_running"}
     return any(t in (activity_type or "").lower() for t in run_types)
+
+
+def _suggest_session(readiness: dict, weekly: dict) -> str:
+    recommendation = readiness.get("recommendation")
+    gym_remaining = weekly.get("gym_remaining", 0)
+    run_remaining = weekly.get("run_remaining", 0)
+
+    if recommendation == "Ruhetag":
+        return "Ruhetag oder 20-30 min Spaziergang, Mobility, früh schlafen."
+    if recommendation == "Locker bewegen":
+        if run_remaining > 0:
+            return "Lockerer Z2-Lauf 30-45 min, keine Intervalle."
+        return "Mobility, Core oder lockeres Ganzkörpertraining ohne Muskelversagen."
+    if gym_remaining >= run_remaining and gym_remaining > 0:
+        return "Krafttraining fokussiert: Grundübungen, 2-3 harte Arbeitssätze, sauber stoppen."
+    if run_remaining > 0:
+        return "Lauftraining: je nach Gefühl Tempo-Block oder solider Z2-Dauerlauf."
+    return "Freie Qualitätseinheit nach Lust, aber Gesamtlast im Blick behalten."

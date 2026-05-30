@@ -40,9 +40,12 @@ class OpenAIHealthAssistant:
         self._model = model
 
     async def generate_morning_briefing(self, snapshot: dict) -> str:
+        readiness = snapshot.get("readiness") or {}
         prompt = f"""
 Morgen-Briefing — bewerte Erholung und gib 1 konkreten Trainingstipp für heute.
 
+Readiness: {readiness.get('score', 'k.A.')}/100 ({readiness.get('recommendation', 'k.A.')})
+Limitierende Faktoren: {', '.join(readiness.get('limiting_factors') or []) or 'k.A.'}
 Schlaf: {_hm(snapshot.get('sleep_duration_minutes'))}, Score: {snapshot.get('sleep_score', 'k.A.')}
 Tiefschlaf: {_hm(snapshot.get('deep_sleep_minutes'))} | REM: {_hm(snapshot.get('rem_sleep_minutes'))}
 HRV: {snapshot.get('avg_hrv', 'k.A.')} ms ({snapshot.get('hrv_status', 'k.A.')})
@@ -94,6 +97,8 @@ Lauf-Einheiten: {weekly.get('run_days')} (Ziel: 3)
 Gesamtdistanz: {weekly.get('total_distance_km')} km
 Trainingsdauer: {_hm(weekly.get('total_duration_minutes'))}
 Kalorien (Training): {weekly.get('total_calories_burned')} kcal
+Training Load: {weekly.get('total_load', 'k.A.')}
+Fitness/Fatigue/Form: {(weekly.get('training_trend') or {}).get('fitness', 'k.A.')} / {(weekly.get('training_trend') or {}).get('fatigue', 'k.A.')} / {(weekly.get('training_trend') or {}).get('form', 'k.A.')}
 
 SCHLAF (Wochendurchschnitt):
 Schlafdauer: {_hm(weekly.get('avg_sleep_minutes'))}
@@ -200,10 +205,12 @@ Format: Bullets — beantworte die Frage direkt, nutze die Daten zur Einordnung.
 
     async def generate_training_tip(self, snapshot: dict, recent_activities: list) -> str:
         recent_types = [a.get("type") for a in recent_activities[:5]]
+        readiness = snapshot.get("readiness") or {}
         prompt = f"""
 Gib einen konkreten Trainingstipp basierend auf:
 
 Aktuelle Erholung:
+- Readiness: {readiness.get('score', 'k.A.')}/100 ({readiness.get('recommendation', 'k.A.')})
 - Body Battery: {snapshot.get('body_battery', 'k.A.')}
 - HRV: {snapshot.get('avg_hrv', 'k.A.')} ms (Status: {snapshot.get('hrv_status', 'k.A.')})
 - Training Readiness: {snapshot.get('training_readiness_score', 'k.A.')}

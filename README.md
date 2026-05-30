@@ -48,6 +48,7 @@ Falls MFA aktiv ist, muss `prompt_mfa` in `connectors/garmin.py` angepasst werde
 |--------|----------|
 | `/hilfe` | Alle Befehle |
 | `/heute` | Tages-Snapshot (Schlaf, Steps, Body Battery) |
+| `/plan` | Readiness-basierte Trainingsempfehlung für heute |
 | `/erholung` | HRV, Body Battery, Training Readiness |
 | `/training` | Letzte 5 Aktivitäten |
 | `/woche` | Wöchentliche Zusammenfassung |
@@ -72,6 +73,18 @@ Falls MFA aktiv ist, muss `prompt_mfa` in `connectors/garmin.py` angepasst werde
 
 Garmin-Schritte haben immer Priorität. Google Fit wird nur genutzt wenn
 Garmin < 500 Schritte für den Tag meldet (= Uhr nicht getragen).
+
+## Aussagekräftige Statistiken
+
+Der Bot berechnet zusätzlich eigene Coaching-Metriken:
+
+- **Readiness Score (0–100)** aus Schlaf, HRV, Body Battery, Stress, Garmin Training Readiness und aktueller Trainingslast
+- **Activity Load** pro Training aus Herzfrequenz-Zonen, Training Effect oder Puls-/Dauer-Fallback
+- **Fitness / Fatigue / Form** als Trendmodell aus Trainingslast
+- **Sleep Debt** gegen dein konfiguriertes Schlafziel
+- **Körpertrend** mit 7-Tage-Schnitt, Wochenrate und Messqualität
+
+Diese Werte steuern `/plan`, `/heute`, `/training`, `/woche`, `/gewicht` und `/status`.
 
 ## Projektstruktur
 

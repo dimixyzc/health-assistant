@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-5.5"
 
     renpho_reminder_days: int = 5
+    sleep_goal_minutes: int = 480
+    weekly_gym_goal: int = 3
+    weekly_run_goal: int = 3
 
     data_dir: str = "/data"
 

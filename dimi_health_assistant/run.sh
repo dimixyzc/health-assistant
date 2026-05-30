@@ -13,6 +13,9 @@ export GOOGLE_CLIENT_SECRET
 export OPENAI_API_KEY
 export OPENAI_MODEL
 export RENPHO_REMINDER_DAYS
+export SLEEP_GOAL_MINUTES
+export WEEKLY_GYM_GOAL
+export WEEKLY_RUN_GOAL
 export TZ
 export DATA_DIR
 
@@ -27,11 +30,14 @@ GOOGLE_CLIENT_SECRET="$(bashio::config 'google_client_secret')"
 OPENAI_API_KEY="$(bashio::config 'openai_api_key')"
 OPENAI_MODEL="$(bashio::config 'openai_model' 'gpt-5.5')"
 RENPHO_REMINDER_DAYS="$(bashio::config 'renpho_reminder_days' '5')"
+SLEEP_GOAL_MINUTES="$(bashio::config 'sleep_goal_minutes' '480')"
+WEEKLY_GYM_GOAL="$(bashio::config 'weekly_gym_goal' '3')"
+WEEKLY_RUN_GOAL="$(bashio::config 'weekly_run_goal' '3')"
 TZ="$(bashio::config 'timezone' 'Europe/Berlin')"
 DATA_DIR="/data"
 
 bashio::log.info "Starting Dimi Health Assistant v1.0.0"
-bashio::log.info "TZ: ${TZ} | Renpho reminder nach: ${RENPHO_REMINDER_DAYS} Tagen"
+bashio::log.info "TZ: ${TZ} | Renpho reminder nach: ${RENPHO_REMINDER_DAYS} Tagen | Schlafziel: ${SLEEP_GOAL_MINUTES} min"
 
 # Google Fit Token von /share nach /data kopieren falls vorhanden
 if [ -f /share/google_fit_token.json ]; then

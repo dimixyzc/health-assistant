@@ -47,6 +47,20 @@ def fmt_delta(delta: Optional[float], unit: str = "") -> str:
     return f"{sign}{delta}{unit}"
 
 
+def fmt_score(score: Optional[int]) -> str:
+    if score is None:
+        return "–"
+    if score >= 85:
+        icon = "✅"
+    elif score >= 70:
+        icon = "🟢"
+    elif score >= 55:
+        icon = "⚠️"
+    else:
+        icon = "🔴"
+    return f"{icon} {score}/100"
+
+
 def fmt_hrv_status(status: Optional[str]) -> str:
     mapping = {
         "BALANCED": "🟢 Ausgeglichen",
@@ -61,13 +75,18 @@ def morning_briefing(snapshot: dict) -> str:
     sleep = fmt_sleep(snapshot.get("sleep_duration_minutes"))
     deep = fmt_sleep(snapshot.get("deep_sleep_minutes"))
     rem = fmt_sleep(snapshot.get("rem_sleep_minutes"))
+    readiness = snapshot.get("readiness") or {}
+    sleep_debt = readiness.get("sleep_debt_minutes")
+    debt_line = f"\n🧾 *Schlafschuld:* {fmt_duration(sleep_debt)}" if sleep_debt else ""
     return (
         f"☀️ *Guten Morgen — {fmt_date(snapshot.get('date'))}*\n\n"
+        f"🎯 *Readiness:* {fmt_score(readiness.get('score'))} — {readiness.get('recommendation', '–')}\n"
         f"💤 *Schlaf:* {sleep} | Score: {snapshot.get('sleep_score', '–')}\n"
         f"   Tief: {deep} · REM: {rem}\n\n"
         f"❤️ *HRV:* {snapshot.get('avg_hrv', '–')} ms — {fmt_hrv_status(snapshot.get('hrv_status'))}\n"
         f"🔋 *Body Battery:* {snapshot.get('body_battery', '–')}/100\n"
         f"💓 *Ruhe-Puls:* {snapshot.get('resting_hr', '–')} bpm"
+        f"{debt_line}"
     )
 
 
@@ -92,17 +111,22 @@ def evening_summary(snapshot: dict, activities: list) -> str:
 def weekly_summary(weekly: dict) -> str:
     gym = weekly.get("gym_days", 0)
     run = weekly.get("run_days", 0)
-    gym_icon = "✅" if gym >= 3 else "⚠️"
-    run_icon = "✅" if run >= 3 else "⚠️"
+    gym_goal = weekly.get("gym_goal", 3)
+    run_goal = weekly.get("run_goal", 3)
+    gym_icon = "✅" if gym >= gym_goal else "⚠️"
+    run_icon = "✅" if run >= run_goal else "⚠️"
+    trend = weekly.get("training_trend") or {}
 
     lines = [
         f"📅 *Woche {fmt_date(weekly.get('week_start'))} – {fmt_date(weekly.get('week_end'))}*\n",
         f"🏋️ *Training*",
-        f"{gym_icon} Gym: {gym}/3 Einheiten",
-        f"{run_icon} Laufen: {run}/3 Einheiten",
+        f"{gym_icon} Gym: {gym}/{gym_goal} Einheiten · offen: {weekly.get('gym_remaining', 0)}",
+        f"{run_icon} Laufen: {run}/{run_goal} Einheiten · offen: {weekly.get('run_remaining', 0)}",
         f"📏 Gesamtdistanz: {weekly.get('total_distance_km', 0)} km",
         f"⏱ Trainingsdauer: {fmt_duration(weekly.get('total_duration_minutes'))}",
-        f"🔥 Kalorien: {weekly.get('total_calories_burned', 0)} kcal\n",
+        f"🔥 Kalorien: {weekly.get('total_calories_burned', 0)} kcal",
+        f"📈 Load: {weekly.get('total_load', 0)} · Prognose: {trend.get('projected_weekly_load', 0)} ({trend.get('load_status', '–')})",
+        f"🧭 Fitness/Fatigue/Form: {trend.get('fitness', 0)} / {trend.get('fatigue', 0)} / {trend.get('form', 0)}\n",
         f"💤 *Schlaf (Ø)*",
         f"Dauer: {fmt_sleep(weekly.get('avg_sleep_minutes'))} | Score: {weekly.get('avg_sleep_score', '–')}",
         f"Tief: {fmt_sleep(weekly.get('avg_deep_sleep_minutes'))} · REM: {fmt_sleep(weekly.get('avg_rem_sleep_minutes'))}\n",
@@ -129,6 +153,26 @@ def weekly_summary(weekly: dict) -> str:
     return "\n".join(lines)
 
 
+def training_plan(plan: dict) -> str:
+    snapshot = plan.get("snapshot") or {}
+    weekly = plan.get("weekly") or {}
+    readiness = plan.get("readiness") or snapshot.get("readiness") or {}
+    trend = weekly.get("training_trend") or {}
+    factors = readiness.get("limiting_factors") or ["keine starken Limitierungen"]
+    factor_text = "\n".join(f"• {factor}" for factor in factors[:3])
+
+    return (
+        f"🎯 *Trainingsplan heute*\n\n"
+        f"{fmt_score(readiness.get('score'))} *{readiness.get('recommendation', '–')}*\n"
+        f"🏋️ Vorschlag: {plan.get('suggested_session', '–')}\n\n"
+        f"📌 *Warum:*\n{factor_text}\n\n"
+        f"📊 *Woche:* Gym {weekly.get('gym_days', 0)}/{weekly.get('gym_goal', 3)} · "
+        f"Laufen {weekly.get('run_days', 0)}/{weekly.get('run_goal', 3)}\n"
+        f"🔥 Load: {weekly.get('total_load', 0)} · Form: {trend.get('form', 0)}\n"
+        f"🧪 {readiness.get('calibration', '–')}"
+    )
+
+
 def weight_summary(trend: dict) -> str:
     if not trend.get("available"):
         return "⚖️ Keine Renpho-Daten vorhanden.\nBitte wiege dich für bessere Insights!"
@@ -139,6 +183,7 @@ def weight_summary(trend: dict) -> str:
     lines = [
         f"⚖️ *Körperkomposition* (letzte {trend.get('period_days')} Tage)\n",
         f"🏋️ Gewicht: *{_v(trend.get('latest_weight'), ' kg')}* ({fmt_delta(trend.get('weight_delta'), ' kg')})",
+        f"📉 7T-Schnitt: {_v(trend.get('avg_weight_7d'), ' kg')} · pro Woche: {fmt_delta(trend.get('weight_delta_per_week'), ' kg')}",
         f"📊 BMI: {_v(trend.get('latest_bmi'))}",
         "",
         f"🔬 *Körperfett & Masse:*",
@@ -159,6 +204,7 @@ def weight_summary(trend: dict) -> str:
         f"  Körperalter: {_v(trend.get('latest_metabolic_age'), ' Jahre')}",
         "",
         f"📏 {trend.get('measurements_count')} Messungen in {trend.get('period_days')} Tagen",
+        f"Messqualität: {trend.get('measurement_quality', '–')} ({trend.get('measurement_density_per_week', 0)}/Woche)",
         f"Letzte Messung: {fmt_date(trend.get('latest_date'))}",
     ]
     return "\n".join(lines)
@@ -200,11 +246,12 @@ def activity_list(activities: list) -> str:
         dist = f" · {a.get('distance_km')} km" if a.get("distance_km") else ""
         hr = f" · ❤️ {a.get('avg_hr')} bpm" if a.get("avg_hr") else ""
         cal = f" · 🔥 {a.get('calories')} kcal" if a.get("calories") else ""
+        load = f" · Load {a.get('load')} ({a.get('load_label')})" if a.get("load") is not None else ""
 
         line = (
             f"• *{a.get('name', a.get('type', '?'))}*\n"
             f"  📅 {fmt_date(a.get('start_time', '')[:10])} · ⏳ {fmt_duration(a.get('duration_minutes'))}"
-            f"{dist}{hr}{cal}"
+            f"{dist}{hr}{cal}{load}"
         )
 
         if is_run:

@@ -4,7 +4,7 @@ from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from analytics import insights, formatter
+from analytics import formatter, insights, metrics
 from ai.openai_client import OpenAIHealthAssistant
 from connectors import garmin as garmin_conn
 from storage import database as db
@@ -35,6 +35,7 @@ async def cmd_start(message: Message) -> None:
         "👋 *Hallo Dimitri!*\n\n"
         "Ich bin dein persönlicher Fitness-Assistent. Hier sind meine Befehle:\n\n"
         "/heute — Tages-Snapshot (Schlaf, Schritte, Body Battery)\n"
+        "/plan — Konkrete Trainingsempfehlung für heute\n"
         "/erholung — HRV, Body Battery, Training Readiness\n"
         "/training — Letzte Aktivitäten\n"
         "/woche — Wöchentliche Zusammenfassung\n"
@@ -60,6 +61,8 @@ async def cmd_heute(message: Message) -> None:
             if a.get("start_time", "").startswith(snapshot["date"])
         ]
         text = await get_ai().generate_morning_briefing(snapshot)
+        fallback = formatter.morning_briefing(snapshot)
+        text = f"{text}\n\n{fallback}" if text else fallback
         if today_activities:
             text += "\n\n" + formatter.activity_list(today_activities)
     except Exception as e:
@@ -92,6 +95,7 @@ async def cmd_training(message: Message) -> None:
         activities = await garmin_conn.get_recent_activities_with_zones(
             settings.garmin_email, settings.garmin_password, settings.data_dir, limit=5
         )
+        activities = metrics.add_activity_loads(activities)
         text = formatter.activity_list(activities)
     except Exception as e:
         logger.error(f"/training Fehler: {e}")
@@ -149,6 +153,20 @@ async def cmd_tipps(message: Message) -> None:
     await message.answer(text, parse_mode="Markdown")
 
 
+@router.message(Command("plan"))
+async def cmd_plan(message: Message) -> None:
+    if not _authorized(message):
+        return
+    await message.answer("⏳ Berechne Trainingsplan...")
+    try:
+        plan = await insights.get_training_plan()
+        text = formatter.training_plan(plan)
+    except Exception as e:
+        logger.error(f"/plan Fehler: {e}")
+        text = "⚠️ Trainingsplan konnte nicht berechnet werden."
+    await message.answer(text, parse_mode="Markdown")
+
+
 @router.message(F.text & ~F.text.startswith("/"))
 async def cmd_freitext(message: Message) -> None:
     """Beantwortet natürlichsprachige Fragen mit vollem Kontext."""
@@ -193,8 +211,10 @@ async def cmd_status(message: Message) -> None:
         snapshot = await insights.get_daily_snapshot()
         latest_weight = await db.get_latest_renpho(settings.data_dir)
         weight_str = f"{latest_weight['weight_kg']} kg" if latest_weight else "–"
+        readiness = snapshot.get("readiness") or {}
         text = (
             f"⚡ *Schnellstatus*\n\n"
+            f"🎯 Readiness: {formatter.fmt_score(readiness.get('score'))} — {readiness.get('recommendation', '–')}\n"
             f"🔋 Body Battery: {snapshot.get('body_battery', '–')}\n"
             f"❤️ HRV: {snapshot.get('avg_hrv', '–')} ms\n"
             f"💓 Ruhe-Puls: {snapshot.get('resting_hr', '–')} bpm\n"
