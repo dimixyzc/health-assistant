@@ -71,29 +71,41 @@ def fmt_hrv_status(status: Optional[str]) -> str:
     return mapping.get((status or "").upper(), status or "–")
 
 
-def morning_briefing(snapshot: dict) -> str:
+def _coach_block(text: Optional[str], title: str = "🧠 *Coach*") -> list[str]:
+    if not text or not text.strip():
+        return []
+    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
+    return [title, *lines[:3], ""]
+
+
+def morning_briefing(snapshot: dict, coach_text: Optional[str] = None) -> str:
     sleep = fmt_sleep(snapshot.get("sleep_duration_minutes"))
     deep = fmt_sleep(snapshot.get("deep_sleep_minutes"))
     rem = fmt_sleep(snapshot.get("rem_sleep_minutes"))
     readiness = snapshot.get("readiness") or {}
     sleep_debt = readiness.get("sleep_debt_minutes")
-    debt_line = f"\n🧾 *Schlafschuld:* {fmt_duration(sleep_debt)}" if sleep_debt else ""
-    return (
+    lines = [
         f"☀️ *Guten Morgen — {fmt_date(snapshot.get('date'))}*\n\n"
-        f"🎯 *Readiness:* {fmt_score(readiness.get('score'))} — {readiness.get('recommendation', '–')}\n"
-        f"💤 *Schlaf:* {sleep} | Score: {snapshot.get('sleep_score', '–')}\n"
-        f"   Tief: {deep} · REM: {rem}\n\n"
+        f"🎯 *{readiness.get('recommendation', '–')}* · {fmt_score(readiness.get('score'))}",
+        "",
+        *_coach_block(coach_text),
+        "📊 *Kurzlage*",
+        f"💤 Schlaf: {sleep} · Score {snapshot.get('sleep_score', '–')} · Tief {deep} · REM {rem}",
         f"❤️ *HRV:* {snapshot.get('avg_hrv', '–')} ms — {fmt_hrv_status(snapshot.get('hrv_status'))}\n"
         f"🔋 *Body Battery:* {snapshot.get('body_battery', '–')}/100\n"
-        f"💓 *Ruhe-Puls:* {snapshot.get('resting_hr', '–')} bpm"
-        f"{debt_line}"
-    )
+        f"💓 *Ruhe-Puls:* {snapshot.get('resting_hr', '–')} bpm",
+    ]
+    if sleep_debt:
+        lines.append(f"🧾 Schlafschuld: {fmt_duration(sleep_debt)}")
+    return "\n".join(lines)
 
 
-def evening_summary(snapshot: dict, activities: list) -> str:
+def evening_summary(snapshot: dict, activities: list, coach_text: Optional[str] = None) -> str:
     steps = fmt_steps(snapshot.get("steps", 0), snapshot.get("steps_source", ""))
     lines = [
-        f"🌙 *Tages-Zusammenfassung*\n",
+        f"🌙 *Tagesabschluss*\n",
+        *_coach_block(coach_text),
+        f"📊 *Heute*",
         f"👣 Schritte: {steps}",
         f"⚡ Aktive Minuten: {snapshot.get('active_minutes', 0)}",
         f"🔥 Kalorien: {snapshot.get('calories', 0)} kcal",
@@ -108,7 +120,7 @@ def evening_summary(snapshot: dict, activities: list) -> str:
     return "\n".join(lines)
 
 
-def weekly_summary(weekly: dict) -> str:
+def weekly_summary(weekly: dict, coach_text: Optional[str] = None) -> str:
     gym = weekly.get("gym_days", 0)
     run = weekly.get("run_days", 0)
     gym_goal = weekly.get("gym_goal", 3)
@@ -119,9 +131,12 @@ def weekly_summary(weekly: dict) -> str:
 
     lines = [
         f"📅 *Woche {fmt_date(weekly.get('week_start'))} – {fmt_date(weekly.get('week_end'))}*\n",
-        f"🏋️ *Training*",
+        *_coach_block(coach_text, title="🧠 *Wochenfazit*"),
+        f"🏋️ *Ziele*",
         f"{gym_icon} Gym: {gym}/{gym_goal} Einheiten · offen: {weekly.get('gym_remaining', 0)}",
         f"{run_icon} Laufen: {run}/{run_goal} Einheiten · offen: {weekly.get('run_remaining', 0)}",
+        "",
+        f"📊 *Training Load*",
         f"📏 Gesamtdistanz: {weekly.get('total_distance_km', 0)} km",
         f"⏱ Trainingsdauer: {fmt_duration(weekly.get('total_duration_minutes'))}",
         f"🔥 Kalorien: {weekly.get('total_calories_burned', 0)} kcal",
@@ -173,7 +188,7 @@ def training_plan(plan: dict) -> str:
     )
 
 
-def weight_summary(trend: dict) -> str:
+def weight_summary(trend: dict, coach_text: Optional[str] = None) -> str:
     if not trend.get("available"):
         return "⚖️ Keine Renpho-Daten vorhanden.\nBitte wiege dich für bessere Insights!"
 
@@ -182,6 +197,7 @@ def weight_summary(trend: dict) -> str:
 
     lines = [
         f"⚖️ *Körperkomposition* (letzte {trend.get('period_days')} Tage)\n",
+        *_coach_block(coach_text, title="🧠 *Einordnung*"),
         f"🏋️ Gewicht: *{_v(trend.get('latest_weight'), ' kg')}* ({fmt_delta(trend.get('weight_delta'), ' kg')})",
         f"📉 7T-Schnitt: {_v(trend.get('avg_weight_7d'), ' kg')} · pro Woche: {fmt_delta(trend.get('weight_delta_per_week'), ' kg')}",
         f"📊 BMI: {_v(trend.get('latest_bmi'))}",

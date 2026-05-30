@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 async def send_morning_briefing(bot: Bot, ai: OpenAIHealthAssistant) -> None:
     try:
         snapshot = await insights.get_daily_snapshot()
-        text = await ai.generate_morning_briefing(snapshot)
-        text += "\n\n" + formatter.morning_briefing(snapshot)
+        coach_text = await ai.generate_morning_briefing(snapshot)
+        text = formatter.morning_briefing(snapshot, coach_text=coach_text)
         await bot.send_message(settings.telegram_chat_id, text, parse_mode="Markdown")
         logger.info("Morgen-Briefing gesendet")
     except Exception as e:
@@ -38,8 +38,8 @@ async def send_evening_summary(bot: Bot, ai: OpenAIHealthAssistant) -> None:
             a for a in activities
             if a.get("start_time", "").startswith(snapshot["date"])
         ]
-        text = await ai.generate_evening_summary(snapshot, today_activities)
-        text += "\n\n" + formatter.evening_summary(snapshot, today_activities)
+        coach_text = await ai.generate_evening_summary(snapshot, today_activities)
+        text = formatter.evening_summary(snapshot, today_activities, coach_text=coach_text)
         await bot.send_message(settings.telegram_chat_id, text, parse_mode="Markdown")
         logger.info("Abend-Zusammenfassung gesendet")
     except Exception as e:
@@ -49,8 +49,8 @@ async def send_evening_summary(bot: Bot, ai: OpenAIHealthAssistant) -> None:
 async def send_weekly_review(bot: Bot, ai: OpenAIHealthAssistant) -> None:
     try:
         weekly = await insights.get_weekly_summary()
-        text = await ai.generate_weekly_summary(weekly)
-        text += "\n\n" + formatter.weekly_summary(weekly)
+        coach_text = await ai.generate_weekly_summary(weekly)
+        text = formatter.weekly_summary(weekly, coach_text=coach_text)
         await bot.send_message(settings.telegram_chat_id, text, parse_mode="Markdown")
         logger.info("Wochen-Review gesendet")
     except Exception as e:

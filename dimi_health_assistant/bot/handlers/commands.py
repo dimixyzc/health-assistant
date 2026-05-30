@@ -60,9 +60,8 @@ async def cmd_heute(message: Message) -> None:
             a for a in activities
             if a.get("start_time", "").startswith(snapshot["date"])
         ]
-        text = await get_ai().generate_morning_briefing(snapshot)
-        fallback = formatter.morning_briefing(snapshot)
-        text = f"{text}\n\n{fallback}" if text else fallback
+        coach_text = await get_ai().generate_morning_briefing(snapshot)
+        text = formatter.morning_briefing(snapshot, coach_text=coach_text)
         if today_activities:
             text += "\n\n" + formatter.activity_list(today_activities)
     except Exception as e:
@@ -110,8 +109,8 @@ async def cmd_woche(message: Message) -> None:
     await message.answer("⏳ Erstelle Wochenanalyse...")
     try:
         weekly = await insights.get_weekly_summary()
-        text = await get_ai().generate_weekly_summary(weekly)
-        text += "\n\n" + formatter.weekly_summary(weekly)
+        coach_text = await get_ai().generate_weekly_summary(weekly)
+        text = formatter.weekly_summary(weekly, coach_text=coach_text)
     except Exception as e:
         logger.error(f"/woche Fehler: {e}")
         text = "⚠️ Fehler beim Laden der Wochendaten."
@@ -126,8 +125,8 @@ async def cmd_gewicht(message: Message) -> None:
     try:
         await insights.refresh_renpho_cache()
         trend = await insights.get_weight_trend(days=30)
-        text = await get_ai().generate_weight_insight(trend)
-        text += "\n\n" + formatter.weight_summary(trend)
+        coach_text = await get_ai().generate_weight_insight(trend)
+        text = formatter.weight_summary(trend, coach_text=coach_text)
     except Exception as e:
         logger.error(f"/gewicht Fehler: {e}")
         text = "⚠️ Fehler beim Laden der Körperdaten."

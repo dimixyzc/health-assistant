@@ -27,9 +27,10 @@ AUSGABEFORMAT — immer einhalten:
 - Kein Fließtext — stattdessen strukturierte Bullet-Points (•)
 - Jeder Bullet beginnt mit einem passenden Emoji zur schnellen Einordnung
 - Emojis als Status-Signale: ✅ gut/erreicht, ⚠️ Achtung, 🔴 kritisch, 💡 Tipp, 📈 Trend positiv, 📉 Trend negativ
-- Maximal 5–6 Bullets pro Antwort
+- Maximal 2–4 Bullets pro Antwort
 - Keine langen Sätze — prägnant, direkt, umsetzbar
 - Keine Einleitung, kein Abschluss-Satz wie "Viel Erfolg!" — nur die Bullets
+- Wiederhole keine Rohdatenliste, wenn die Daten separat formatiert werden
 - Schlaf NIEMALS in Minuten angeben — immer als "Xh Ymin" (z.B. "1h 45min" statt "105 Min")
 """
 
@@ -51,7 +52,7 @@ Tiefschlaf: {_hm(snapshot.get('deep_sleep_minutes'))} | REM: {_hm(snapshot.get('
 HRV: {snapshot.get('avg_hrv', 'k.A.')} ms ({snapshot.get('hrv_status', 'k.A.')})
 Body Battery: {snapshot.get('body_battery', 'k.A.')} | Ruhe-Puls: {snapshot.get('resting_hr', 'k.A.')} bpm
 
-Format: 3-4 Bullets — erst Erholungs-Bewertung, dann 1 Trainingsempfehlung.
+Format: 2 Bullets — 1 kurze Einordnung, 1 konkrete Trainingsempfehlung. Keine Wiederholung aller Rohwerte.
 """
         return await self._chat(prompt)
 
@@ -71,7 +72,7 @@ Body Battery: {snapshot.get('body_battery', 'k.A.')}
 Aktivitäten:
 {activity_lines}
 
-Format: 3-4 Bullets — Tagesbewertung + 1 konkreter Ausblick für morgen.
+Format: 2 Bullets — Tagesbewertung + 1 konkreter Ausblick für morgen. Keine Rohdatenliste.
 """
         return await self._chat(prompt)
 
@@ -111,11 +112,8 @@ HRV: {weekly.get('today_hrv', 'k.A.')} ms
 Body Battery: {weekly.get('today_body_battery', 'k.A.')}
 Ruhe-Puls: {weekly.get('today_resting_hr', 'k.A.')} bpm
 {weight_section}
-Format — Bullets in 4 Blöcken:
-• Training: Ziel erreicht? Einordnung der Woche
-• Schlaf: Qualität im Kontext des Trainingsvolumens
-• Körper: Gewichts-/Körperfett-Trend, Muskelentwicklung — kurz einordnen
-• Nächste Woche: 2 konkrete Empfehlungen
+Format: 3 Bullets — 1 Wochenfazit, 1 stärkster Hebel, 1 konkrete Empfehlung für nächste Woche.
+Keine Wiederholung der Rohdaten, die kommen separat im Statistikblock.
 
 Setze die Werte in Perspektive für einen Hybrid-Athleten (3x Gym + 3x Laufen/Woche).
 """
@@ -151,7 +149,7 @@ Körperalter: {trend.get('latest_metabolic_age')} Jahre
 
 Anzahl Messungen: {trend.get('measurements_count')} in {trend.get('period_days')} Tagen
 
-Format: 4-5 Bullets — Trend-Einordnung (besonders Viszeralfett, Muskelmasse, Körperfett) + 1 konkreter Tipp.
+Format: 2-3 Bullets — Trend-Einordnung + 1 konkreter Tipp. Keine Wiederholung der Rohdatenliste.
 """
         return await self._chat(prompt)
 
