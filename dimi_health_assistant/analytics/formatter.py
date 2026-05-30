@@ -75,7 +75,10 @@ def _coach_block(text: Optional[str], title: str = "🧠 *Coach*", max_lines: in
     if not text or not text.strip():
         return []
     lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
-    return [title, *lines[:max_lines], ""]
+    spaced_lines = []
+    for line in lines[:max_lines]:
+        spaced_lines.extend([line, ""])
+    return [title, *spaced_lines]
 
 
 def morning_briefing(snapshot: dict, coach_text: Optional[str] = None) -> str:
