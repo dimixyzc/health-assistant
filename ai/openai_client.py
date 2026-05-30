@@ -18,7 +18,7 @@ def _hm(minutes) -> str:
 
 
 _ATHLETE_PROFILE = """
-Du bist ein persönlicher Fitness-Assistent für Dimitri, einen Hybrid-Athleten.
+Du bist ein evidenzorientierter AI-Health- und Performance-Coach für Dimitri, einen Hybrid-Athleten.
 Trainingsziel: 3x pro Woche Krafttraining im Gym + 3x Laufen pro Woche.
 Dimitri ist sportlich aktiv, verfolgt seine Daten mit einer Garmin-Uhr und einer Renpho-Waage.
 
@@ -27,10 +27,12 @@ AUSGABEFORMAT — immer einhalten:
 - Kein Fließtext — stattdessen strukturierte Bullet-Points (•)
 - Jeder Bullet beginnt mit einem passenden Emoji zur schnellen Einordnung
 - Emojis als Status-Signale: ✅ gut/erreicht, ⚠️ Achtung, 🔴 kritisch, 💡 Tipp, 📈 Trend positiv, 📉 Trend negativ
-- Maximal 2–4 Bullets pro Antwort
-- Keine langen Sätze — prägnant, direkt, umsetzbar
+- Wissenschaftlich gehaltvoll, aber verständlich: erkläre Mechanismus → Bedeutung → Handlung
+- Keine Diagnose, keine Heilversprechen; bei auffälligen Mustern ärztliche Abklärung empfehlen
+- Keine langen Romane — prägnant, direkt, umsetzbar
 - Keine Einleitung, kein Abschluss-Satz wie "Viel Erfolg!" — nur die Bullets
 - Wiederhole keine Rohdatenliste, wenn die Daten separat formatiert werden
+- Du darfst einzelne Werte zitieren, wenn du damit eine konkrete Aussage begründest
 - Schlaf NIEMALS in Minuten angeben — immer als "Xh Ymin" (z.B. "1h 45min" statt "105 Min")
 """
 
@@ -52,7 +54,13 @@ Tiefschlaf: {_hm(snapshot.get('deep_sleep_minutes'))} | REM: {_hm(snapshot.get('
 HRV: {snapshot.get('avg_hrv', 'k.A.')} ms ({snapshot.get('hrv_status', 'k.A.')})
 Body Battery: {snapshot.get('body_battery', 'k.A.')} | Ruhe-Puls: {snapshot.get('resting_hr', 'k.A.')} bpm
 
-Format: 2 Bullets — 1 kurze Einordnung, 1 konkrete Trainingsempfehlung. Keine Wiederholung aller Rohwerte.
+Format: 5-6 Bullets:
+• Erholung/Readiness einordnen
+• Schlafarchitektur oder Schlafschuld physiologisch erklären
+• HRV/Ruhepuls/Stress/Body Battery in Bezug auf autonomes Nervensystem erklären
+• Trainingsempfehlung mit Intensität und Umfang
+• Steuerung/Warnsignal für die Einheit
+Keine reine Rohdatenliste.
 """
         return await self._chat(prompt)
 
@@ -72,7 +80,12 @@ Body Battery: {snapshot.get('body_battery', 'k.A.')}
 Aktivitäten:
 {activity_lines}
 
-Format: 2 Bullets — Tagesbewertung + 1 konkreter Ausblick für morgen. Keine Rohdatenliste.
+Format: 4-5 Bullets:
+• Tagesbelastung einordnen
+• Regenerationsbedarf erklären
+• Zusammenhang zu morgen herstellen
+• konkrete Empfehlung für Schlaf, Training oder aktive Erholung
+Keine reine Rohdatenliste.
 """
         return await self._chat(prompt)
 
@@ -112,8 +125,14 @@ HRV: {weekly.get('today_hrv', 'k.A.')} ms
 Body Battery: {weekly.get('today_body_battery', 'k.A.')}
 Ruhe-Puls: {weekly.get('today_resting_hr', 'k.A.')} bpm
 {weight_section}
-Format: 3 Bullets — 1 Wochenfazit, 1 stärkster Hebel, 1 konkrete Empfehlung für nächste Woche.
-Keine Wiederholung der Rohdaten, die kommen separat im Statistikblock.
+Format: 6-8 Bullets:
+• Wochenfazit zu Trainingsziel und Load
+• Fitness/Fatigue/Form interpretieren
+• Schlaf und Recovery im Kontext der Belastung erklären
+• Körperkomposition trendbasiert einordnen, falls vorhanden
+• stärkster Hebel für nächste Woche
+• 1-2 konkrete Empfehlungen zu Training, Erholung oder Ernährung
+Keine reine Rohdatenliste, die Statistik kommt separat.
 
 Setze die Werte in Perspektive für einen Hybrid-Athleten (3x Gym + 3x Laufen/Woche).
 """
@@ -149,7 +168,49 @@ Körperalter: {trend.get('latest_metabolic_age')} Jahre
 
 Anzahl Messungen: {trend.get('measurements_count')} in {trend.get('period_days')} Tagen
 
-Format: 2-3 Bullets — Trend-Einordnung + 1 konkreter Tipp. Keine Wiederholung der Rohdatenliste.
+Format: 5-6 Bullets:
+• Trendqualität und Messfrequenz einordnen
+• Gewichtstrend mit Körperfett und Muskelmasse zusammen interpretieren
+• Viszeralfett/Unterhautfett vorsichtig einordnen
+• erklären, was bei BIA-Waagen Messrauschen sein kann
+• konkrete Empfehlung für nächste 7 Tage
+Keine reine Rohdatenliste.
+"""
+        return await self._chat(prompt)
+
+    async def generate_plan_explanation(self, plan: dict) -> str:
+        snapshot = plan.get("snapshot") or {}
+        weekly = plan.get("weekly") or {}
+        readiness = plan.get("readiness") or {}
+        trend = weekly.get("training_trend") or {}
+        prompt = f"""
+Erkläre die heutige Trainingsentscheidung evidenzorientiert.
+
+ENTSCHEIDUNG:
+Readiness: {readiness.get('score', 'k.A.')}/100
+Empfehlung: {readiness.get('recommendation', 'k.A.')}
+Vorgeschlagene Einheit: {plan.get('suggested_session', 'k.A.')}
+Limitierende Faktoren: {', '.join(readiness.get('limiting_factors') or []) or 'keine'}
+
+HEUTE:
+Schlaf: {_hm(snapshot.get('sleep_duration_minutes'))}, Score: {snapshot.get('sleep_score', 'k.A.')}
+HRV: {snapshot.get('avg_hrv', 'k.A.')} ms ({snapshot.get('hrv_status', 'k.A.')})
+Body Battery: {snapshot.get('body_battery', 'k.A.')}
+Ruhe-Puls: {snapshot.get('resting_hr', 'k.A.')} bpm
+Stress: {snapshot.get('avg_stress', 'k.A.')}
+
+WOCHE:
+Gym: {weekly.get('gym_days', 0)}/{weekly.get('gym_goal', 3)}
+Laufen: {weekly.get('run_days', 0)}/{weekly.get('run_goal', 3)}
+Load: {weekly.get('total_load', 0)}
+Fitness/Fatigue/Form: {trend.get('fitness', 0)} / {trend.get('fatigue', 0)} / {trend.get('form', 0)}
+
+Format: 4-5 Bullets:
+• warum diese Entscheidung heute sinnvoll ist
+• physiologische Begründung
+• Wochenziel-Kontext
+• konkrete Ausführung der Einheit
+• Warnsignal oder Anpassungsregel
 """
         return await self._chat(prompt)
 

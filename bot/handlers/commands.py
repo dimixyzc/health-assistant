@@ -159,7 +159,8 @@ async def cmd_plan(message: Message) -> None:
     await message.answer("⏳ Berechne Trainingsplan...")
     try:
         plan = await insights.get_training_plan()
-        text = formatter.training_plan(plan)
+        coach_text = await get_ai().generate_plan_explanation(plan)
+        text = formatter.training_plan(plan, coach_text=coach_text)
     except Exception as e:
         logger.error(f"/plan Fehler: {e}")
         text = "⚠️ Trainingsplan konnte nicht berechnet werden."
