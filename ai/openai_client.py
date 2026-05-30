@@ -29,7 +29,8 @@ AUSGABEFORMAT — immer einhalten:
 - Emojis als Status-Signale: ✅ gut/erreicht, ⚠️ Achtung, 🔴 kritisch, 💡 Tipp, 📈 Trend positiv, 📉 Trend negativ
 - Wissenschaftlich gehaltvoll, aber verständlich: erkläre Mechanismus → Bedeutung → Handlung
 - Keine Diagnose, keine Heilversprechen; bei auffälligen Mustern ärztliche Abklärung empfehlen
-- Keine langen Romane — prägnant, direkt, umsetzbar
+- Kompakt schreiben: maximal 1-2 kurze Sätze pro Bullet
+- Keine langen Trainingsrezepte in einem Bullet; Details knapp halten
 - Keine Einleitung, kein Abschluss-Satz wie "Viel Erfolg!" — nur die Bullets
 - Wiederhole keine Rohdatenliste, wenn die Daten separat formatiert werden
 - Du darfst einzelne Werte zitieren, wenn du damit eine konkrete Aussage begründest
@@ -54,12 +55,12 @@ Tiefschlaf: {_hm(snapshot.get('deep_sleep_minutes'))} | REM: {_hm(snapshot.get('
 HRV: {snapshot.get('avg_hrv', 'k.A.')} ms ({snapshot.get('hrv_status', 'k.A.')})
 Body Battery: {snapshot.get('body_battery', 'k.A.')} | Ruhe-Puls: {snapshot.get('resting_hr', 'k.A.')} bpm
 
-Format: 5-6 Bullets:
+Format: 4 Bullets:
 • Erholung/Readiness einordnen
-• Schlafarchitektur oder Schlafschuld physiologisch erklären
-• HRV/Ruhepuls/Stress/Body Battery in Bezug auf autonomes Nervensystem erklären
-• Trainingsempfehlung mit Intensität und Umfang
+• Schlaf oder HRV physiologisch erklären, aber kompakt
+• Trainingsempfehlung mit grober Intensität
 • Steuerung/Warnsignal für die Einheit
+Jeder Bullet maximal 22 Wörter.
 Keine reine Rohdatenliste.
 """
         return await self._chat(prompt)
@@ -80,11 +81,12 @@ Body Battery: {snapshot.get('body_battery', 'k.A.')}
 Aktivitäten:
 {activity_lines}
 
-Format: 4-5 Bullets:
+Format: 3-4 Bullets:
 • Tagesbelastung einordnen
 • Regenerationsbedarf erklären
 • Zusammenhang zu morgen herstellen
 • konkrete Empfehlung für Schlaf, Training oder aktive Erholung
+Jeder Bullet maximal 22 Wörter.
 Keine reine Rohdatenliste.
 """
         return await self._chat(prompt)
@@ -125,13 +127,14 @@ HRV: {weekly.get('today_hrv', 'k.A.')} ms
 Body Battery: {weekly.get('today_body_battery', 'k.A.')}
 Ruhe-Puls: {weekly.get('today_resting_hr', 'k.A.')} bpm
 {weight_section}
-Format: 6-8 Bullets:
+Format: 5-6 Bullets:
 • Wochenfazit zu Trainingsziel und Load
 • Fitness/Fatigue/Form interpretieren
 • Schlaf und Recovery im Kontext der Belastung erklären
 • Körperkomposition trendbasiert einordnen, falls vorhanden
 • stärkster Hebel für nächste Woche
-• 1-2 konkrete Empfehlungen zu Training, Erholung oder Ernährung
+• konkrete Empfehlung zu Training, Erholung oder Ernährung
+Jeder Bullet maximal 24 Wörter.
 Keine reine Rohdatenliste, die Statistik kommt separat.
 
 Setze die Werte in Perspektive für einen Hybrid-Athleten (3x Gym + 3x Laufen/Woche).
@@ -168,12 +171,12 @@ Körperalter: {trend.get('latest_metabolic_age')} Jahre
 
 Anzahl Messungen: {trend.get('measurements_count')} in {trend.get('period_days')} Tagen
 
-Format: 5-6 Bullets:
+Format: 4-5 Bullets:
 • Trendqualität und Messfrequenz einordnen
 • Gewichtstrend mit Körperfett und Muskelmasse zusammen interpretieren
-• Viszeralfett/Unterhautfett vorsichtig einordnen
-• erklären, was bei BIA-Waagen Messrauschen sein kann
+• BIA-Messrauschen knapp erklären
 • konkrete Empfehlung für nächste 7 Tage
+Jeder Bullet maximal 24 Wörter.
 Keine reine Rohdatenliste.
 """
         return await self._chat(prompt)
@@ -205,12 +208,12 @@ Laufen: {weekly.get('run_days', 0)}/{weekly.get('run_goal', 3)}
 Load: {weekly.get('total_load', 0)}
 Fitness/Fatigue/Form: {trend.get('fitness', 0)} / {trend.get('fatigue', 0)} / {trend.get('form', 0)}
 
-Format: 4-5 Bullets:
+Format: 4 Bullets:
 • warum diese Entscheidung heute sinnvoll ist
 • physiologische Begründung
 • Wochenziel-Kontext
-• konkrete Ausführung der Einheit
 • Warnsignal oder Anpassungsregel
+Jeder Bullet maximal 22 Wörter.
 """
         return await self._chat(prompt)
 
