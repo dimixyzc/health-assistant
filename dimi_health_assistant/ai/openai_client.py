@@ -35,6 +35,10 @@ AUSGABEFORMAT — immer einhalten:
 - Wiederhole keine Rohdatenliste, wenn die Daten separat formatiert werden
 - Du darfst einzelne Werte zitieren, wenn du damit eine konkrete Aussage begründest
 - Schlaf NIEMALS in Minuten angeben — immer als "Xh Ymin" (z.B. "1h 45min" statt "105 Min")
+- Interpretiere Tageswerte immer relativ zum Zeitpunkt der Datenabfrage.
+- Niedrige Body Battery am Abend ist meist normaler Tagesverbrauch; werte sie nur mit Zusatzsignalen als Problem.
+- Vermeide generische Warn- und Stoppsignal-Floskeln ohne konkreten Datenbezug.
+- Schreibe keine Aussagen wie "bei schweren Beinen locker" oder "bei ungewöhnlich hohem Puls Intensität reduzieren".
 """
 
 
@@ -54,14 +58,16 @@ Schlaf: {_hm(snapshot.get('sleep_duration_minutes'))}, Score: {snapshot.get('sle
 Tiefschlaf: {_hm(snapshot.get('deep_sleep_minutes'))} | REM: {_hm(snapshot.get('rem_sleep_minutes'))}
 HRV: {snapshot.get('avg_hrv', 'k.A.')} ms ({snapshot.get('hrv_status', 'k.A.')})
 Body Battery: {snapshot.get('body_battery', 'k.A.')} | Ruhe-Puls: {snapshot.get('resting_hr', 'k.A.')} bpm
+Datenabfrage: {snapshot.get('fetched_time', 'k.A.')} Uhr
 
 Format: 4 Bullets:
 • Erholung/Readiness einordnen
 • Schlaf oder HRV physiologisch erklären, aber kompakt
 • Trainingsempfehlung mit grober Intensität
-• Steuerung/Warnsignal für die Einheit
+• konkrete Tagessteuerung, nur wenn aus Daten ableitbar
 Jeder Bullet maximal 22 Wörter.
 Keine reine Rohdatenliste.
+Keine generischen Warnsignale oder "abhängig vom Gefühl"-Hinweise.
 """
         return await self._chat(prompt)
 
@@ -77,6 +83,7 @@ Tages-Zusammenfassung — bewerte den Tag und gib 1 Tipp für morgen.
 Schritte: {snapshot.get('steps', 0)} | Aktive Min: {snapshot.get('active_minutes', 0)}
 Kalorien: {snapshot.get('calories', 0)} kcal | Stress: {snapshot.get('avg_stress', 'k.A.')}
 Body Battery: {snapshot.get('body_battery', 'k.A.')}
+Datenabfrage: {snapshot.get('fetched_time', 'k.A.')} Uhr
 
 Aktivitäten:
 {activity_lines}
@@ -88,6 +95,7 @@ Format: 3-4 Bullets:
 • konkrete Empfehlung für Schlaf, Training oder aktive Erholung
 Jeder Bullet maximal 22 Wörter.
 Keine reine Rohdatenliste.
+Body Battery abends als normalen Tagesverbrauch einordnen, nicht pauschal als schlechte Erholung.
 """
         return await self._chat(prompt)
 
@@ -126,6 +134,7 @@ ERHOLUNG (aktuell):
 HRV: {weekly.get('today_hrv', 'k.A.')} ms
 Body Battery: {weekly.get('today_body_battery', 'k.A.')}
 Ruhe-Puls: {weekly.get('today_resting_hr', 'k.A.')} bpm
+Datenabfrage: {(weekly.get('snapshot') or {}).get('fetched_time', 'k.A.')} Uhr
 {weight_section}
 Format: 5-6 Bullets:
 • Wochenfazit zu Trainingsziel und Load
@@ -201,6 +210,7 @@ HRV: {snapshot.get('avg_hrv', 'k.A.')} ms ({snapshot.get('hrv_status', 'k.A.')})
 Body Battery: {snapshot.get('body_battery', 'k.A.')}
 Ruhe-Puls: {snapshot.get('resting_hr', 'k.A.')} bpm
 Stress: {snapshot.get('avg_stress', 'k.A.')}
+Datenabfrage: {snapshot.get('fetched_time', 'k.A.')} Uhr
 
 WOCHE:
 Gym: {weekly.get('gym_days', 0)}/{weekly.get('gym_goal', 3)}
@@ -212,13 +222,19 @@ Format: 4 Bullets:
 • warum diese Entscheidung heute sinnvoll ist
 • physiologische Begründung
 • Wochenziel-Kontext
-• Warnsignal oder Anpassungsregel
+• konkrete Anpassungsregel nur bei direktem Datenbezug
 Jeder Bullet maximal 22 Wörter.
+Keine generischen Stoppsignale, schweren-Beine-Floskeln oder offensichtlichen Warnhinweise.
 """
         return await self._chat(prompt)
 
     async def answer_free_question(
-        self, question: str, snapshot: dict, activities: list, weight_trend: dict | None = None
+        self,
+        question: str,
+        snapshot: dict,
+        activities: list,
+        weight_trend: dict | None = None,
+        hrv_trend: dict | None = None,
     ) -> str:
         recent = "\n".join(
             f"- {a.get('start_time', '')[:10]} | {a.get('name', a.get('type', '?'))} | "
@@ -245,6 +261,26 @@ Messungen: {wt.get('measurements_count')} in 30 Tagen · Letzte: {wt.get('latest
         else:
             weight_section = "\nRENPHO: Keine Daten verfügbar."
 
+        ht = hrv_trend or {}
+        if ht.get("available"):
+            hrv_samples = ", ".join(
+                f"{s.get('date')}: {s.get('value')} ms"
+                for s in ht.get("samples", [])[-14:]
+            )
+            hrv_section = f"""
+HRV-VERLAUF ({ht.get('start_date')} bis {ht.get('end_date')}, {ht.get('samples_count')} Werte):
+Aktuell: {ht.get('latest')} ms | Start: {ht.get('first')} ms | Delta: {_delta_str(ht.get('delta'))} ms
+Ø: {ht.get('average')} ms | Min/Max: {ht.get('minimum')}/{ht.get('maximum')} ms
+Trendhälften: {ht.get('early_avg')} → {ht.get('late_avg')} ms ({_delta_str(ht.get('trend_delta'))} ms)
+Status-Verteilung: {ht.get('status_counts')}
+Letzte Werte: {hrv_samples}"""
+        elif hrv_trend is not None:
+            hrv_section = f"""
+HRV-VERLAUF:
+Für die letzten {ht.get('period_days', 28)} Tage sind keine belastbaren HRV-Verlaufswerte verfügbar."""
+        else:
+            hrv_section = "\nHRV-VERLAUF: Nicht abgefragt, außer die Frage zielt auf HRV-Entwicklung."
+
         prompt = f"""
 Beantworte diese Frage von Dimitri basierend auf seinen aktuellen Gesundheits- und Trainingsdaten:
 
@@ -256,12 +292,17 @@ HRV: {snapshot.get('avg_hrv', 'k.A.')} ms ({snapshot.get('hrv_status', 'k.A.')})
 Body Battery: {snapshot.get('body_battery', 'k.A.')}
 Ruhe-Puls: {snapshot.get('resting_hr', 'k.A.')} bpm
 Schritte: {snapshot.get('steps', 0)}
+Datenabfrage: {snapshot.get('fetched_time', 'k.A.')} Uhr
 {weight_section}
+{hrv_section}
 
 LETZTE AKTIVITÄTEN:
 {recent}
 
 Format: Bullets — beantworte die Frage direkt, nutze die Daten zur Einordnung.
+Bei Fragen zur HRV-Entwicklung: zuerst Verlauf/Trend beantworten, dann Tageswert und Kontext einordnen.
+Wenn kein HRV-Verlauf verfügbar ist, klar sagen, dass keine belastbare Entwicklung ableitbar ist.
+Zeitabhängige Werte wie Body Battery relativ zur Abfragezeit interpretieren.
 """
         return await self._chat(prompt)
 

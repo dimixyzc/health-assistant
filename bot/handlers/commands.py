@@ -27,6 +27,15 @@ def _authorized(message: Message) -> bool:
     return message.chat.id == settings.telegram_chat_id
 
 
+def _asks_for_hrv_trend(text: str | None) -> bool:
+    if not text:
+        return False
+    normalized = text.lower()
+    trend_terms = ("entwicklung", "trend", "verlauf", "entwickelt", "verändert")
+    hrv_terms = ("hrv", "herzratenvariabil")
+    return any(term in normalized for term in hrv_terms) and any(term in normalized for term in trend_terms)
+
+
 @router.message(Command("start", "hilfe", "help"))
 async def cmd_start(message: Message) -> None:
     if not _authorized(message):
@@ -175,25 +184,33 @@ async def cmd_freitext(message: Message) -> None:
     await message.answer("⏳ Analysiere...")
     try:
         import asyncio
-        snapshot, activities, weight_trend = await asyncio.gather(
+        base_tasks = [
             insights.get_daily_snapshot(),
             garmin_conn.get_recent_activities(
                 settings.garmin_email, settings.garmin_password, settings.data_dir, limit=10
             ),
             insights.get_weight_trend(days=30),
-            return_exceptions=True,
-        )
+        ]
+        if _asks_for_hrv_trend(message.text):
+            base_tasks.append(insights.get_hrv_trend(days=28))
+
+        results = await asyncio.gather(*base_tasks, return_exceptions=True)
+        snapshot, activities, weight_trend = results[:3]
+        hrv_trend = results[3] if len(results) > 3 else None
         if isinstance(snapshot, Exception):
             snapshot = {}
         if isinstance(activities, Exception):
             activities = []
         if isinstance(weight_trend, Exception):
             weight_trend = {"available": False}
+        if isinstance(hrv_trend, Exception):
+            hrv_trend = {"available": False}
         text = await get_ai().answer_free_question(
             question=message.text,
             snapshot=snapshot,
             activities=activities,
             weight_trend=weight_trend,
+            hrv_trend=hrv_trend,
         )
     except Exception as e:
         logger.error(f"Freitext-Fehler: {e}")

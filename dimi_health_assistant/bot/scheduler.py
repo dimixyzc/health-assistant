@@ -72,20 +72,30 @@ async def check_renpho_reminder(bot: Bot) -> None:
 def setup_scheduler(bot: Bot, ai: OpenAIHealthAssistant) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone="Europe/Berlin")
 
-    # Morgen-Briefing 07:30
+    # Morgen-Briefing Mo-Fr 07:30
     scheduler.add_job(
         send_morning_briefing,
-        CronTrigger(hour=7, minute=30, timezone="Europe/Berlin"),
+        CronTrigger(day_of_week="mon-fri", hour=7, minute=30, timezone="Europe/Berlin"),
         args=[bot, ai],
-        id="morning_briefing",
-        name="Morgen-Briefing",
+        id="morning_briefing_weekday",
+        name="Morgen-Briefing Woche",
         replace_existing=True,
     )
 
-    # Abend-Zusammenfassung 20:00
+    # Morgen-Briefing Sa-So 08:30
+    scheduler.add_job(
+        send_morning_briefing,
+        CronTrigger(day_of_week="sat,sun", hour=8, minute=30, timezone="Europe/Berlin"),
+        args=[bot, ai],
+        id="morning_briefing_weekend",
+        name="Morgen-Briefing Wochenende",
+        replace_existing=True,
+    )
+
+    # Abend-Zusammenfassung 20:30
     scheduler.add_job(
         send_evening_summary,
-        CronTrigger(hour=20, minute=0, timezone="Europe/Berlin"),
+        CronTrigger(hour=20, minute=30, timezone="Europe/Berlin"),
         args=[bot, ai],
         id="evening_summary",
         name="Abend-Zusammenfassung",

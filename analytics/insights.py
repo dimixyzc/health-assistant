@@ -2,7 +2,8 @@
 Kombiniert Daten aus allen Quellen zu auswertbaren Snapshots.
 """
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import Optional
 
 from connectors import garmin as garmin_conn
@@ -14,10 +15,12 @@ from storage import database as db
 from config import settings
 
 logger = logging.getLogger(__name__)
+LOCAL_TZ = ZoneInfo("Europe/Berlin")
 
 
 async def get_daily_snapshot(for_date: Optional[str] = None) -> dict:
-    target = for_date or date.today().isoformat()
+    fetched_at = datetime.now(LOCAL_TZ)
+    target = for_date or fetched_at.date().isoformat()
 
     # Parallel fetchen
     import asyncio
@@ -56,6 +59,8 @@ async def get_daily_snapshot(for_date: Optional[str] = None) -> dict:
 
     snapshot = {
         "date": target,
+        "fetched_at": fetched_at.isoformat(timespec="minutes"),
+        "fetched_time": fetched_at.strftime("%H:%M"),
         "steps": steps,
         "steps_source": steps_source,
         "calories": stats.get("calories"),
@@ -80,6 +85,87 @@ async def get_daily_snapshot(for_date: Optional[str] = None) -> dict:
         sleep_goal_minutes=settings.sleep_goal_minutes,
     )
     return snapshot
+
+
+async def get_hrv_trend(days: int = 28) -> dict:
+    """Holt eine kompakte HRV-Zeitreihe für Verlaufsfragen."""
+    import asyncio
+
+    end = datetime.now(LOCAL_TZ).date()
+    start = end - timedelta(days=days - 1)
+    dates = [(start + timedelta(days=i)).isoformat() for i in range(days)]
+    semaphore = asyncio.Semaphore(4)
+
+    async def fetch_day(day: str):
+        async with semaphore:
+            return await garmin_conn.get_hrv_data(
+                settings.garmin_email, settings.garmin_password, settings.data_dir, day
+            )
+
+    tasks = [
+        asyncio.create_task(fetch_day(day))
+        for day in dates
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    samples = []
+    for day, result in zip(dates, results):
+        if isinstance(result, Exception):
+            continue
+        raw_value = result.get("last_night") or result.get("weekly_avg")
+        if raw_value is None:
+            continue
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+        if value.is_integer():
+            value = int(value)
+        samples.append({
+            "date": day,
+            "value": value,
+            "status": result.get("status"),
+            "weekly_avg": result.get("weekly_avg"),
+        })
+
+    values = [s["value"] for s in samples]
+    if not values:
+        return {
+            "available": False,
+            "period_days": days,
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "samples": [],
+        }
+
+    first = values[0]
+    latest = values[-1]
+    midpoint = max(1, len(values) // 2)
+    early_avg = round(sum(values[:midpoint]) / midpoint)
+    late_avg = round(sum(values[midpoint:]) / max(1, len(values[midpoint:])))
+    status_counts = {}
+    for sample in samples:
+        status = sample.get("status") or "UNKNOWN"
+        status_counts[status] = status_counts.get(status, 0) + 1
+
+    return {
+        "available": True,
+        "period_days": days,
+        "start_date": samples[0]["date"],
+        "end_date": samples[-1]["date"],
+        "samples_count": len(samples),
+        "latest": latest,
+        "first": first,
+        "delta": round(latest - first),
+        "average": round(sum(values) / len(values)),
+        "minimum": min(values),
+        "maximum": max(values),
+        "early_avg": early_avg,
+        "late_avg": late_avg,
+        "trend_delta": round(late_avg - early_avg),
+        "status_counts": status_counts,
+        "samples": samples,
+    }
 
 
 async def get_weekly_summary() -> dict:

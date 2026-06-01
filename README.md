@@ -60,8 +60,8 @@ Falls MFA aktiv ist, muss `prompt_mfa` in `connectors/garmin.py` angepasst werde
 
 | Zeit | Inhalt |
 |------|--------|
-| 07:30 täglich | Morgen-Briefing (Schlaf, HRV, Empfehlung) |
-| 20:00 täglich | Abend-Zusammenfassung (Schritte, Workouts) |
+| 07:30 Mo-Fr, 08:30 Sa-So | Morgen-Briefing (Schlaf, HRV, Empfehlung) |
+| 20:30 täglich | Abend-Zusammenfassung (Schritte, Workouts) |
 | Sonntag 18:00 | Wochen-Review mit GPT-4o |
 | 07:30 (konditional) | Renpho-Erinnerung wenn >5 Tage keine Messung |
 
