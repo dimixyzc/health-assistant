@@ -37,7 +37,12 @@ async def get_daily_snapshot(for_date: Optional[str] = None) -> dict:
         garmin_conn.get_training_readiness(settings.garmin_email, settings.garmin_password, settings.data_dir)
     )
     gfit_task = asyncio.create_task(
-        gfit_conn.get_steps(settings.google_client_id, settings.google_client_secret, settings.data_dir)
+        gfit_conn.get_steps(
+            settings.google_client_id,
+            settings.google_client_secret,
+            settings.data_dir,
+            date.fromisoformat(target),
+        )
     )
 
     stats, sleep, hrv, readiness, gfit_steps = await asyncio.gather(

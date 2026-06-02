@@ -20,6 +20,25 @@ Läuft als Docker-Container auf dem Intel NUC neben Home Assistant.
 4. `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` kopieren
 5. Beim ersten Start läuft ein Browser-OAuth-Flow
 
+Falls Google Fit keine Schritte liefert und im Log `invalid_grant` steht, ist der
+gespeicherte Token abgelaufen oder widerrufen. Dann neu autorisieren:
+
+```bash
+GOOGLE_FIT_INTERACTIVE_AUTH=1 ./.venv/bin/python - <<'PY'
+import asyncio
+from datetime import date
+from config import settings
+from connectors.google_fit import get_steps
+
+asyncio.run(get_steps(
+    settings.google_client_id,
+    settings.google_client_secret,
+    settings.data_dir,
+    date.today(),
+))
+PY
+```
+
 ### 4. Konfiguration
 ```bash
 cp .env.example .env

@@ -4,25 +4,35 @@ Google Fit REST API (deprecated → Google Health Connect 2026, Migration notwen
 OAuth2 Token wird in data_dir persistiert.
 """
 import asyncio
-import json
 import logging
 import os
-from datetime import datetime, date, timezone
+from datetime import datetime, date, time, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
 _SCOPES = ["https://www.googleapis.com/auth/fitness.activity.read"]
 _TOKEN_FILE = "google_fit_token.json"
 _STEP_DATA_SOURCE = "derived:com.google.step_count.delta:com.google.android.gms:estimated_steps"
+_LOCAL_TZ = ZoneInfo("Europe/Berlin")
+
+
+class GoogleFitAuthError(Exception):
+    """Google Fit token is missing, expired, or revoked."""
 
 
 def _token_path(data_dir: str) -> str:
     return os.path.join(data_dir, _TOKEN_FILE)
 
 
+def _interactive_auth_enabled() -> bool:
+    return os.getenv("GOOGLE_FIT_INTERACTIVE_AUTH", "").lower() in {"1", "true", "yes"}
+
+
 def _build_service(client_id: str, client_secret: str, data_dir: str):
     from google.oauth2.credentials import Credentials
+    from google.auth.exceptions import RefreshError
     from google_auth_oauthlib.flow import InstalledAppFlow
     from google.auth.transport.requests import Request
     from googleapiclient.discovery import build
@@ -35,54 +45,113 @@ def _build_service(client_id: str, client_secret: str, data_dir: str):
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+            except RefreshError as e:
+                try:
+                    os.replace(path, f"{path}.invalid")
+                except OSError:
+                    pass
+                raise GoogleFitAuthError(
+                    "Google Fit OAuth-Token ist ungültig oder wurde widerrufen. "
+                    "Bitte google_fit_token.json mit GOOGLE_FIT_INTERACTIVE_AUTH=1 neu autorisieren."
+                ) from e
         else:
+            if not _interactive_auth_enabled():
+                raise GoogleFitAuthError(
+                    "Google Fit OAuth-Token fehlt oder kann nicht aktualisiert werden. "
+                    "Bitte google_fit_token.json mit GOOGLE_FIT_INTERACTIVE_AUTH=1 neu autorisieren."
+                )
             client_config = {
                 "installed": {
                     "client_id": client_id,
                     "client_secret": client_secret,
-                    "redirect_uris": ["urn:ietf:wg:oauth:2.0:oob"],
+                    "redirect_uris": ["http://localhost", "urn:ietf:wg:oauth:2.0:oob"],
                     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                     "token_uri": "https://oauth2.googleapis.com/token",
                 }
             }
             flow = InstalledAppFlow.from_client_config(client_config, _SCOPES)
             # Läuft einmalig interaktiv beim ersten Start
-            creds = flow.run_local_server(port=0)
+            creds = flow.run_local_server(
+                port=0,
+                access_type="offline",
+                prompt="consent",
+            )
         with open(path, "w") as f:
             f.write(creds.to_json())
 
-    return build("fitness", "v1", credentials=creds)
+    return build("fitness", "v1", credentials=creds, cache_discovery=False)
 
 
-def _date_to_nanos(d: date) -> tuple[int, int]:
-    """Liefert Start- und End-Nanosekunden für einen Tag."""
-    start = datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
-    end = datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=timezone.utc)
-    return int(start.timestamp() * 1e9), int(end.timestamp() * 1e9)
+def _date_bounds(d: date) -> tuple[int, int, int, int]:
+    """Liefert lokale Tagesgrenzen als Millisekunden und Nanosekunden."""
+    start = datetime.combine(d, time.min, tzinfo=_LOCAL_TZ)
+    end = start + timedelta(days=1)
+    start_ms = int(start.timestamp() * 1000)
+    end_ms = int(end.timestamp() * 1000)
+    return start_ms, end_ms, start_ms * 1_000_000, end_ms * 1_000_000
+
+
+def _sum_steps_from_response(response: dict) -> int:
+    total = 0
+    for bucket in response.get("bucket", []):
+        for dataset in bucket.get("dataset", []):
+            for point in dataset.get("point", []):
+                for val in point.get("value", []):
+                    total += val.get("intVal", 0)
+    return total
+
+
+def _sum_steps_from_dataset(response: dict) -> int:
+    total = 0
+    for point in response.get("point", []):
+        for val in point.get("value", []):
+            total += val.get("intVal", 0)
+    return total
 
 
 def _fetch_steps(client_id: str, client_secret: str, data_dir: str, target: date) -> Optional[int]:
     try:
         service = _build_service(client_id, client_secret, data_dir)
-        start_ns, end_ns = _date_to_nanos(target)
+        start_ms, end_ms, start_ns, end_ns = _date_bounds(target)
 
         body = {
             "aggregateBy": [{"dataTypeName": "com.google.step_count.delta"}],
-            "bucketByTime": {"durationMillis": 86400000},
-            "startTimeMillis": start_ns // 1_000_000,
-            "endTimeMillis": end_ns // 1_000_000,
+            "bucketByTime": {
+                "period": {
+                    "type": "day",
+                    "value": 1,
+                    "timeZoneId": "Europe/Berlin",
+                }
+            },
+            "startTimeMillis": start_ms,
+            "endTimeMillis": end_ms,
         }
 
-        response = service.users().dataset().aggregate(userId="me", body=body).execute()
-        buckets = response.get("bucket", [])
-        total = 0
-        for bucket in buckets:
-            for dataset in bucket.get("dataset", []):
-                for point in dataset.get("point", []):
-                    for val in point.get("value", []):
-                        total += val.get("intVal", 0)
+        aggregate_response = service.users().dataset().aggregate(userId="me", body=body).execute()
+        aggregate_total = _sum_steps_from_response(aggregate_response)
+
+        dataset_id = f"{start_ns}-{end_ns}"
+        estimated_response = service.users().dataSources().datasets().get(
+            userId="me",
+            dataSourceId=_STEP_DATA_SOURCE,
+            datasetId=dataset_id,
+        ).execute()
+        estimated_total = _sum_steps_from_dataset(estimated_response)
+
+        total = max(aggregate_total, estimated_total)
+        logger.info(
+            "Google Fit Schritte %s: aggregate=%s estimated=%s selected=%s",
+            target.isoformat(),
+            aggregate_total,
+            estimated_total,
+            total,
+        )
         return total if total > 0 else None
+    except GoogleFitAuthError as e:
+        logger.warning(str(e))
+        return None
     except Exception as e:
         logger.warning(f"Google Fit Schritte konnten nicht abgerufen werden: {e}")
         return None
