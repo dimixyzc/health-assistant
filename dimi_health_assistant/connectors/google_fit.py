@@ -111,34 +111,50 @@ def _sum_steps_from_dataset(response: dict) -> int:
     return total
 
 
+def _fetch_aggregate_steps(service, start_ms: int, end_ms: int) -> int:
+    body = {
+        "aggregateBy": [{"dataTypeName": "com.google.step_count.delta"}],
+        "bucketByTime": {
+            "period": {
+                "type": "day",
+                "value": 1,
+                "timeZoneId": "Europe/Berlin",
+            }
+        },
+        "startTimeMillis": start_ms,
+        "endTimeMillis": end_ms,
+    }
+
+    response = service.users().dataset().aggregate(userId="me", body=body).execute()
+    return _sum_steps_from_response(response)
+
+
+def _fetch_estimated_steps(service, start_ns: int, end_ns: int) -> int:
+    dataset_id = f"{start_ns}-{end_ns}"
+    response = service.users().dataSources().datasets().get(
+        userId="me",
+        dataSourceId=_STEP_DATA_SOURCE,
+        datasetId=dataset_id,
+    ).execute()
+    return _sum_steps_from_dataset(response)
+
+
 def _fetch_steps(client_id: str, client_secret: str, data_dir: str, target: date) -> Optional[int]:
     try:
         service = _build_service(client_id, client_secret, data_dir)
         start_ms, end_ms, start_ns, end_ns = _date_bounds(target)
 
-        body = {
-            "aggregateBy": [{"dataTypeName": "com.google.step_count.delta"}],
-            "bucketByTime": {
-                "period": {
-                    "type": "day",
-                    "value": 1,
-                    "timeZoneId": "Europe/Berlin",
-                }
-            },
-            "startTimeMillis": start_ms,
-            "endTimeMillis": end_ms,
-        }
+        aggregate_total = 0
+        try:
+            aggregate_total = _fetch_aggregate_steps(service, start_ms, end_ms)
+        except Exception as e:
+            logger.warning("Google Fit Aggregate-Schritte konnten nicht abgerufen werden: %s", e)
 
-        aggregate_response = service.users().dataset().aggregate(userId="me", body=body).execute()
-        aggregate_total = _sum_steps_from_response(aggregate_response)
-
-        dataset_id = f"{start_ns}-{end_ns}"
-        estimated_response = service.users().dataSources().datasets().get(
-            userId="me",
-            dataSourceId=_STEP_DATA_SOURCE,
-            datasetId=dataset_id,
-        ).execute()
-        estimated_total = _sum_steps_from_dataset(estimated_response)
+        estimated_total = 0
+        try:
+            estimated_total = _fetch_estimated_steps(service, start_ns, end_ns)
+        except Exception as e:
+            logger.info("Google Fit estimated_steps-Datenquelle nicht nutzbar: %s", e)
 
         total = max(aggregate_total, estimated_total)
         logger.info(
