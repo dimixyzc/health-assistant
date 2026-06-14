@@ -1,5 +1,5 @@
 name: "Dimi Health Assistant"
-version: "1.0.10"
+version: "1.0.11"
 slug: "dimi_health_assistant"
 description: "Persönlicher Fitness-Bot: Garmin + Renpho + Google Fit + OpenAI"
 url: "https://github.com/dimixyzc/health-assistant"
@@ -24,7 +24,7 @@ options:
   renpho_reminder_days: 5
   sleep_goal_minutes: 480
   weekly_gym_goal: 3
-  weekly_run_goal: 3
+  weekly_cardio_goal: 3
   timezone: "Europe/Berlin"
 schema:
   telegram_bot_token: str
@@ -40,5 +40,5 @@ schema:
   renpho_reminder_days: int?
   sleep_goal_minutes: int?
   weekly_gym_goal: int?
-  weekly_run_goal: int?
+  weekly_cardio_goal: int?
   timezone: str?
