@@ -7,7 +7,7 @@ import asyncio
 import logging
 import os
 from datetime import datetime, date, time, timedelta
-from typing import Optional
+from typing import Optional, TypedDict
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
@@ -20,6 +20,16 @@ _LOCAL_TZ = ZoneInfo("Europe/Berlin")
 
 class GoogleFitAuthError(Exception):
     """Google Fit token is missing, expired, or revoked."""
+
+
+class StepsResult(TypedDict):
+    steps: Optional[int]
+    status: str  # "ok" | "auth_expired" | "no_data" | "disabled" | "error"
+    detail: Optional[str]
+
+
+def _result(steps: Optional[int], status: str, detail: Optional[str] = None) -> StepsResult:
+    return {"steps": steps, "status": status, "detail": detail}
 
 
 def _token_path(data_dir: str) -> str:
@@ -139,21 +149,33 @@ def _fetch_estimated_steps(service, start_ns: int, end_ns: int) -> int:
     return _sum_steps_from_dataset(response)
 
 
-def _fetch_steps(client_id: str, client_secret: str, data_dir: str, target: date) -> Optional[int]:
+def _fetch_steps(client_id: str, client_secret: str, data_dir: str, target: date) -> StepsResult:
     try:
         service = _build_service(client_id, client_secret, data_dir)
+    except GoogleFitAuthError as e:
+        logger.warning(str(e))
+        return _result(None, "auth_expired", str(e))
+    except Exception as e:
+        logger.warning("Google Fit Service konnte nicht aufgebaut werden: %s", e)
+        return _result(None, "error", str(e))
+
+    try:
         start_ms, end_ms, start_ns, end_ns = _date_bounds(target)
 
         aggregate_total = 0
+        aggregate_failed = False
         try:
             aggregate_total = _fetch_aggregate_steps(service, start_ms, end_ms)
         except Exception as e:
+            aggregate_failed = True
             logger.warning("Google Fit Aggregate-Schritte konnten nicht abgerufen werden: %s", e)
 
         estimated_total = 0
+        estimated_failed = False
         try:
             estimated_total = _fetch_estimated_steps(service, start_ns, end_ns)
         except Exception as e:
+            estimated_failed = True
             logger.info("Google Fit estimated_steps-Datenquelle nicht nutzbar: %s", e)
 
         total = max(aggregate_total, estimated_total)
@@ -164,18 +186,24 @@ def _fetch_steps(client_id: str, client_secret: str, data_dir: str, target: date
             estimated_total,
             total,
         )
-        return total if total > 0 else None
-    except GoogleFitAuthError as e:
-        logger.warning(str(e))
-        return None
+        if total > 0:
+            return _result(total, "ok")
+        if aggregate_failed and estimated_failed:
+            return _result(None, "error", "Beide Google-Fit-Datenquellen sind fehlgeschlagen.")
+        return _result(0, "no_data")
     except Exception as e:
-        logger.warning(f"Google Fit Schritte konnten nicht abgerufen werden: {e}")
-        return None
+        logger.warning("Google Fit Schritte konnten nicht abgerufen werden: %s", e)
+        return _result(None, "error", str(e))
 
 
-async def get_steps(client_id: str, client_secret: str, data_dir: str, for_date: Optional[date] = None) -> Optional[int]:
-    """Gibt Schrittzahl für einen Tag zurück, oder None bei Fehler."""
+async def get_steps(
+    client_id: str,
+    client_secret: str,
+    data_dir: str,
+    for_date: Optional[date] = None,
+) -> StepsResult:
+    """Gibt {steps, status, detail} zurück. status ∈ {ok, auth_expired, no_data, disabled, error}."""
     if not client_id or not client_secret:
-        return None
+        return _result(None, "disabled", "Google-Fit-Credentials nicht konfiguriert.")
     target = for_date or date.today()
     return await asyncio.to_thread(_fetch_steps, client_id, client_secret, data_dir, target)

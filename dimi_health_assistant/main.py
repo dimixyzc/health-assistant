@@ -7,7 +7,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
 from bot.handlers.commands import router as commands_router
-from bot.scheduler import setup_scheduler
+from bot.scheduler import setup_scheduler, check_google_fit_health
 from ai.openai_client import OpenAIHealthAssistant
 from storage.database import init_db
 from config import settings
@@ -30,6 +30,7 @@ async def on_startup(bot: Bot) -> None:
         "🤖 *Health Assistant gestartet!*\nTippe /hilfe für alle Befehle.",
         parse_mode="Markdown",
     )
+    await check_google_fit_health(bot)
 
 
 async def main() -> None:

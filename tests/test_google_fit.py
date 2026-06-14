@@ -118,10 +118,10 @@ class GoogleFitTest(unittest.TestCase):
         )
 
         with patch.object(google_fit, "_build_service", return_value=service):
-            self.assertEqual(
-                google_fit._fetch_steps("client", "secret", "/tmp", date(2026, 6, 2)),
-                4600,
-            )
+            result = google_fit._fetch_steps("client", "secret", "/tmp", date(2026, 6, 2))
+
+        self.assertEqual(result["steps"], 4600)
+        self.assertEqual(result["status"], "ok")
 
     def test_fetch_steps_uses_estimated_when_aggregate_fails(self):
         service = _FakeService(
@@ -130,10 +130,45 @@ class GoogleFitTest(unittest.TestCase):
         )
 
         with patch.object(google_fit, "_build_service", return_value=service):
-            self.assertEqual(
-                google_fit._fetch_steps("client", "secret", "/tmp", date(2026, 6, 2)),
-                3500,
-            )
+            result = google_fit._fetch_steps("client", "secret", "/tmp", date(2026, 6, 2))
+
+        self.assertEqual(result["steps"], 3500)
+        self.assertEqual(result["status"], "ok")
+
+    def test_fetch_steps_returns_auth_expired_when_service_raises_auth_error(self):
+        def boom(*args, **kwargs):
+            raise google_fit.GoogleFitAuthError("token revoked")
+
+        with patch.object(google_fit, "_build_service", side_effect=boom):
+            result = google_fit._fetch_steps("client", "secret", "/tmp", date(2026, 6, 2))
+
+        self.assertIsNone(result["steps"])
+        self.assertEqual(result["status"], "auth_expired")
+        self.assertIn("token revoked", result["detail"])
+
+    def test_fetch_steps_returns_no_data_when_both_sources_empty(self):
+        service = _FakeService(
+            aggregate_response={"bucket": [{"dataset": []}]},
+            dataset_response={"point": []},
+        )
+
+        with patch.object(google_fit, "_build_service", return_value=service):
+            result = google_fit._fetch_steps("client", "secret", "/tmp", date(2026, 6, 2))
+
+        self.assertEqual(result["steps"], 0)
+        self.assertEqual(result["status"], "no_data")
+
+    def test_fetch_steps_returns_error_when_both_sources_fail(self):
+        service = _FakeService(
+            aggregate_error=RuntimeError("aggregate failed"),
+            dataset_error=RuntimeError("dataset failed"),
+        )
+
+        with patch.object(google_fit, "_build_service", return_value=service):
+            result = google_fit._fetch_steps("client", "secret", "/tmp", date(2026, 6, 2))
+
+        self.assertIsNone(result["steps"])
+        self.assertEqual(result["status"], "error")
 
 
 if __name__ == "__main__":

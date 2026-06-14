@@ -19,8 +19,13 @@ def _hm(minutes) -> str:
 
 _ATHLETE_PROFILE = """
 Du bist ein evidenzorientierter AI-Health- und Performance-Coach für Dimitri, einen Hybrid-Athleten.
-Trainingsziel: 3x pro Woche Krafttraining im Gym + 3x Laufen pro Woche.
+Trainingsziel: 3x pro Woche Krafttraining im Gym + 3x impact-armes Cardio pro Woche.
 Dimitri ist sportlich aktiv, verfolgt seine Daten mit einer Garmin-Uhr und einer Renpho-Waage.
+
+WICHTIG — Trainingsrestriktionen (permanent):
+- KEIN Laufen. Niemals "Z2-Lauf", "Tempolauf", "Intervalle laufen", "Dauerlauf" oder ähnliches empfehlen.
+- Cardio-Empfehlungen sind ausschließlich impact-arm: Spinning / Indoor-Cycling, Crosstrainer / Elliptical, Schwimmen, Rudern.
+- Krafttraining ist erlaubt, aber knie-sicher: keine tiefen Kniebeugen, keine Sprünge / Plyometrie, keine instabilen einbeinigen Belastungen unter Last.
 
 AUSGABEFORMAT — immer einhalten:
 - Antworte auf Deutsch
@@ -116,8 +121,8 @@ Erstelle eine strukturierte wöchentliche Trainings-, Schlaf- und Körperkomposi
 📅 Woche: {weekly.get('week_start')} bis {weekly.get('week_end')}
 
 TRAINING:
-Gym-Einheiten: {weekly.get('gym_days')} (Ziel: 3)
-Lauf-Einheiten: {weekly.get('run_days')} (Ziel: 3)
+Gym-Einheiten: {weekly.get('gym_days')} (Ziel: {weekly.get('gym_goal', 3)})
+Cardio-Einheiten (Spinning/Crosstrainer/Rudern/Schwimmen): {weekly.get('cardio_days')} (Ziel: {weekly.get('cardio_goal', 3)})
 Gesamtdistanz: {weekly.get('total_distance_km')} km
 Trainingsdauer: {_hm(weekly.get('total_duration_minutes'))}
 Kalorien (Training): {weekly.get('total_calories_burned')} kcal
@@ -146,7 +151,7 @@ Format: 5-6 Bullets:
 Jeder Bullet maximal 24 Wörter.
 Keine reine Rohdatenliste, die Statistik kommt separat.
 
-Setze die Werte in Perspektive für einen Hybrid-Athleten (3x Gym + 3x Laufen/Woche).
+Setze die Werte in Perspektive für einen Hybrid-Athleten (3x Gym + 3x impact-armes Cardio/Woche, kein Laufen).
 """
         return await self._chat(prompt)
 
@@ -214,7 +219,7 @@ Datenabfrage: {snapshot.get('fetched_time', 'k.A.')} Uhr
 
 WOCHE:
 Gym: {weekly.get('gym_days', 0)}/{weekly.get('gym_goal', 3)}
-Laufen: {weekly.get('run_days', 0)}/{weekly.get('run_goal', 3)}
+Cardio: {weekly.get('cardio_days', 0)}/{weekly.get('cardio_goal', 3)}
 Load: {weekly.get('total_load', 0)}
 Fitness/Fatigue/Form: {trend.get('fitness', 0)} / {trend.get('fatigue', 0)} / {trend.get('form', 0)}
 
@@ -321,7 +326,7 @@ Aktuelle Erholung:
 
 Letzte 5 Aktivitäten: {', '.join(str(t) for t in recent_types)}
 
-Trainingsziel: 3x Gym + 3x Laufen pro Woche als Hybrid-Athlet.
+Trainingsziel: 3x Gym + 3x impact-armes Cardio (Spinning/Crosstrainer/Rudern/Schwimmen) pro Woche als Hybrid-Athlet — kein Laufen.
 Format: 3-4 Bullets — 1 Erholungs-Status, dann 2-3 spezifische, umsetzbare Tipps.
 """
         return await self._chat(prompt)

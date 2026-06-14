@@ -198,13 +198,13 @@ def calculate_readiness(snapshot: dict, sleep_goal_minutes: int = 480, recent_ac
     return readiness.to_dict()
 
 
-def weekly_goal_summary(gym_days: int, run_days: int, gym_goal: int = 3, run_goal: int = 3) -> dict:
+def weekly_goal_summary(gym_days: int, cardio_days: int, gym_goal: int = 3, cardio_goal: int = 3) -> dict:
     return {
         "gym_goal": gym_goal,
-        "run_goal": run_goal,
+        "cardio_goal": cardio_goal,
         "gym_remaining": max(0, gym_goal - gym_days),
-        "run_remaining": max(0, run_goal - run_days),
-        "goal_status": "erfüllt" if gym_days >= gym_goal and run_days >= run_goal else "offen",
+        "cardio_remaining": max(0, cardio_goal - cardio_days),
+        "goal_status": "erfüllt" if gym_days >= gym_goal and cardio_days >= cardio_goal else "offen",
     }
 
 

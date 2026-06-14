@@ -45,7 +45,7 @@ async def get_daily_snapshot(for_date: Optional[str] = None) -> dict:
         )
     )
 
-    stats, sleep, hrv, readiness, gfit_steps = await asyncio.gather(
+    stats, sleep, hrv, readiness, gfit_result = await asyncio.gather(
         stats_task, sleep_task, hrv_task, readiness_task, gfit_task,
         return_exceptions=True,
     )
@@ -58,9 +58,12 @@ async def get_daily_snapshot(for_date: Optional[str] = None) -> dict:
     sleep = safe(sleep, {})
     hrv = safe(hrv, {})
     readiness = safe(readiness, {})
-    gfit_steps = safe(gfit_steps)
+    gfit_result = safe(gfit_result, {"steps": None, "status": "error", "detail": "Exception beim Abruf"})
 
-    steps, steps_source = merge_steps(stats.get("steps"), gfit_steps)
+    gfit_steps = gfit_result.get("steps")
+    gfit_status = gfit_result.get("status", "error")
+    garmin_steps_raw = stats.get("steps")
+    steps, steps_source = merge_steps(garmin_steps_raw, gfit_steps)
 
     snapshot = {
         "date": target,
@@ -68,6 +71,10 @@ async def get_daily_snapshot(for_date: Optional[str] = None) -> dict:
         "fetched_time": fetched_at.strftime("%H:%M"),
         "steps": steps,
         "steps_source": steps_source,
+        "garmin_steps_raw": garmin_steps_raw,
+        "gfit_steps_raw": gfit_steps,
+        "gfit_status": gfit_status,
+        "gfit_detail": gfit_result.get("detail"),
         "calories": stats.get("calories"),
         "active_calories": stats.get("active_calories"),
         "active_minutes": stats.get("active_minutes"),
@@ -209,7 +216,7 @@ async def get_weekly_summary() -> dict:
 
     activities = metrics.add_activity_loads(activities)
     gym_days = sum(1 for a in activities if _is_gym(a.get("type", "")))
-    run_days = sum(1 for a in activities if _is_run(a.get("type", "")))
+    cardio_days = sum(1 for a in activities if _is_cardio(a.get("type", "")))
     total_distance = round(sum(a.get("distance_km") or 0 for a in activities), 1)
     total_duration = sum(a.get("duration_minutes") or 0 for a in activities)
     total_calories = sum(a.get("calories") or 0 for a in activities)
@@ -217,9 +224,9 @@ async def get_weekly_summary() -> dict:
     training_trend = metrics.training_trend(activities)
     weekly_goals = metrics.weekly_goal_summary(
         gym_days,
-        run_days,
+        cardio_days,
         gym_goal=settings.weekly_gym_goal,
-        run_goal=settings.weekly_run_goal,
+        cardio_goal=settings.weekly_cardio_goal,
     )
 
     # Schlaf-Durchschnitte
@@ -236,7 +243,7 @@ async def get_weekly_summary() -> dict:
         "week_end": today.isoformat(),
         "total_activities": len(activities),
         "gym_days": gym_days,
-        "run_days": run_days,
+        "cardio_days": cardio_days,
         "total_distance_km": total_distance,
         "total_duration_minutes": total_duration,
         "total_calories_burned": total_calories,
@@ -348,28 +355,28 @@ async def refresh_renpho_cache() -> Optional[dict]:
 
 
 def _is_gym(activity_type: str) -> bool:
-    gym_types = {"strength_training", "fitness_equipment", "gym", "indoor_cycling", "yoga", "pilates", "weight_training"}
+    gym_types = {"strength_training", "fitness_equipment", "gym", "yoga", "pilates", "weight_training"}
     return any(t in (activity_type or "").lower() for t in gym_types)
 
 
-def _is_run(activity_type: str) -> bool:
-    run_types = {"running", "trail_running", "treadmill_running"}
-    return any(t in (activity_type or "").lower() for t in run_types)
+def _is_cardio(activity_type: str) -> bool:
+    cardio_types = {"indoor_cycling", "spinning", "cycling", "elliptical", "cardio", "rowing", "swimming"}
+    return any(t in (activity_type or "").lower() for t in cardio_types)
 
 
 def _suggest_session(readiness: dict, weekly: dict) -> str:
     recommendation = readiness.get("recommendation")
     gym_remaining = weekly.get("gym_remaining", 0)
-    run_remaining = weekly.get("run_remaining", 0)
+    cardio_remaining = weekly.get("cardio_remaining", 0)
 
     if recommendation == "Ruhetag":
         return "Ruhetag oder 20-30 min Spaziergang, Mobility, früh schlafen."
     if recommendation == "Locker bewegen":
-        if run_remaining > 0:
-            return "Lockerer Z2-Lauf 30-45 min, keine Intervalle."
+        if cardio_remaining > 0:
+            return "Spinning Z2 30-45 min oder Crosstrainer locker, keine Intervalle."
         return "Mobility, Core oder lockeres Ganzkörpertraining ohne Muskelversagen."
-    if gym_remaining >= run_remaining and gym_remaining > 0:
-        return "Krafttraining fokussiert: Grundübungen, 2-3 harte Arbeitssätze, sauber stoppen."
-    if run_remaining > 0:
-        return "Lauftraining: je nach Gefühl Tempo-Block oder solider Z2-Dauerlauf."
-    return "Freie Qualitätseinheit nach Lust, aber Gesamtlast im Blick behalten."
+    if gym_remaining >= cardio_remaining and gym_remaining > 0:
+        return "Krafttraining fokussiert: Grundübungen knie-sicher, 2-3 harte Arbeitssätze, sauber stoppen."
+    if cardio_remaining > 0:
+        return "Cardio: Spinning-Intervalle (z.B. 5×3min Z4) oder Crosstrainer-Tempo, alternativ Rudern/Schwimmen."
+    return "Freie Qualitätseinheit (Kraft oder impact-armes Cardio), Gesamtlast im Blick behalten."

@@ -34,10 +34,10 @@ class MetricsTest(unittest.TestCase):
         self.assertIn("Schlafschuld", readiness["limiting_factors"])
 
     def test_weekly_goal_summary_reports_remaining_units(self):
-        summary = weekly_goal_summary(gym_days=2, run_days=1, gym_goal=3, run_goal=3)
+        summary = weekly_goal_summary(gym_days=2, cardio_days=1, gym_goal=3, cardio_goal=3)
 
         self.assertEqual(summary["gym_remaining"], 1)
-        self.assertEqual(summary["run_remaining"], 2)
+        self.assertEqual(summary["cardio_remaining"], 2)
         self.assertEqual(summary["goal_status"], "offen")
 
     def test_training_trend_returns_form_from_activity_loads(self):

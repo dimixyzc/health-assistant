@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     renpho_reminder_days: int = 5
     sleep_goal_minutes: int = 480
     weekly_gym_goal: int = 3
-    weekly_run_goal: int = 3
+    weekly_cardio_goal: int = 3
 
     data_dir: str = "/data"
 

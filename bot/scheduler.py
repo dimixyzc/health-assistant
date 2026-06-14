@@ -10,6 +10,7 @@ from apscheduler.triggers.cron import CronTrigger
 from analytics import insights, formatter
 from ai.openai_client import OpenAIHealthAssistant
 from connectors import garmin as garmin_conn
+from connectors import google_fit as gfit_conn
 from storage import database as db
 from config import settings
 
@@ -55,6 +56,29 @@ async def send_weekly_review(bot: Bot, ai: OpenAIHealthAssistant) -> None:
         logger.info("Wochen-Review gesendet")
     except Exception as e:
         logger.error(f"Wochen-Review Fehler: {e}")
+
+
+async def check_google_fit_health(bot: Bot) -> None:
+    """Beim Start einmal Google Fit anpingen — Telegram-Warnung wenn Auth abgelaufen."""
+    if not settings.google_client_id or not settings.google_client_secret:
+        logger.info("Google Fit Health-Check übersprungen — nicht konfiguriert.")
+        return
+    try:
+        result = await gfit_conn.get_steps(
+            settings.google_client_id,
+            settings.google_client_secret,
+            settings.data_dir,
+        )
+        status = result.get("status")
+        logger.info("Google Fit Health-Check: status=%s steps=%s", status, result.get("steps"))
+        if status == "auth_expired":
+            await bot.send_message(
+                settings.telegram_chat_id,
+                formatter.gfit_auth_warning(result.get("detail")),
+                parse_mode="Markdown",
+            )
+    except Exception as e:
+        logger.warning("Google Fit Health-Check fehlgeschlagen: %s", e)
 
 
 async def check_renpho_reminder(bot: Bot) -> None:
