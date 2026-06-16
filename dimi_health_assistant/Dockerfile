@@ -4,7 +4,7 @@ FROM $BUILD_FROM
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-RUN apk add --no-cache python3 py3-pip gcc musl-dev libffi-dev openssl-dev python3-dev cargo
+RUN apk add --no-cache python3 python3-dev py3-pip gcc musl-dev libffi-dev openssl-dev cargo
 
 WORKDIR /opt/health-assistant
 
