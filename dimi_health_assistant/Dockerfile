@@ -1,5 +1,4 @@
-ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-python:3.12-alpine3.20
-FROM $BUILD_FROM
+FROM ghcr.io/home-assistant/amd64-base-python:3.12-alpine3.20
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
