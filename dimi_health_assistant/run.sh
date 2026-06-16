@@ -36,7 +36,7 @@ WEEKLY_CARDIO_GOAL="$(bashio::config 'weekly_cardio_goal' '3')"
 TZ="$(bashio::config 'timezone' 'Europe/Berlin')"
 DATA_DIR="/data"
 
-bashio::log.info "Starting Dimi Health Assistant v1.0.11"
+bashio::log.info "Starting Dimi Health Assistant v1.0.12"
 bashio::log.info "TZ: ${TZ} | Renpho reminder nach: ${RENPHO_REMINDER_DAYS} Tagen | Schlafziel: ${SLEEP_GOAL_MINUTES} min | Cardio-Ziel: ${WEEKLY_CARDIO_GOAL}"
 
 # Google Fit Token von /share nach /data kopieren falls vorhanden
