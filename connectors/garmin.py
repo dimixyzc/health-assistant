@@ -20,10 +20,10 @@ def _create_client(email: str, password: str, data_dir: str) -> Garmin:
     client = Garmin(email, password, is_cn=False, prompt_mfa=None)
     try:
         client.login(token_path)
-    except Exception:
-        logger.info("Kein gültiger Token, logge mit Credentials ein...")
-        client.login()
-        client.garth.dump(token_path)
+    except Exception as e:
+        logger.info(f"Kein gültiger Token, logge mit Credentials ein... ({e})")
+        client.login(token_path)
+        client.client.dump(token_path)
     return client
 
 
