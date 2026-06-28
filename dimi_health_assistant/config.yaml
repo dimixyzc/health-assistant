@@ -1,5 +1,5 @@
 name: "Dimi Health Assistant"
-version: "1.0.14"
+version: "1.0.15"
 slug: "dimi_health_assistant"
 description: "Persönlicher Fitness-Bot: Garmin + Renpho + Google Fit + OpenAI"
 url: "https://github.com/dimixyzc/health-assistant"

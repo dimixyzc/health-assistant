@@ -36,13 +36,13 @@ WEEKLY_CARDIO_GOAL="$(bashio::config 'weekly_cardio_goal' '3')"
 TZ="$(bashio::config 'timezone' 'Europe/Berlin')"
 DATA_DIR="/data"
 
-bashio::log.info "Starting Dimi Health Assistant v1.0.14"
+bashio::log.info "Starting Dimi Health Assistant v1.0.15"
 bashio::log.info "TZ: ${TZ} | Renpho reminder nach: ${RENPHO_REMINDER_DAYS} Tagen | Schlafziel: ${SLEEP_GOAL_MINUTES} min | Cardio-Ziel: ${WEEKLY_CARDIO_GOAL}"
 
 # Google Fit Token aus /share nur übernehmen, wenn /data keinen neueren Token hat.
 # Der Connector spiegelt erfolgreiche Refreshes wieder zurück nach /share.
 if [ -f /share/google_fit_token.json ]; then
-    if [ ! -f /data/google_fit_token.json ] || [ /share/google_fit_token.json -nt /data/google_fit_token.json ]; then
+    if [ ! -f /data/google_fit_token.json ] || [ /share/google_fit_token.json -nt /data/google_fit_token.json ] || ! cmp -s /share/google_fit_token.json /data/google_fit_token.json; then
         cp /share/google_fit_token.json /data/google_fit_token.json
         chmod 600 /data/google_fit_token.json || true
         bashio::log.info "Google Fit Token aus /share übernommen"
