@@ -114,6 +114,21 @@ Muskelmasse: {weekly.get('latest_muscle_mass')} kg ({_delta_str(weekly.get('musc
 Unterhautfett: {weekly.get('latest_subfat')} % · Viszeralfett Level: {weekly.get('latest_visceral_fat')}
 Protein: {weekly.get('latest_protein')} % · Körperalter: {weekly.get('latest_metabolic_age')} Jahre
 """ if w_available else "\nKÖRPERKOMPOSITION: Keine Renpho-Daten diese Woche.\n"
+        journal = weekly.get("journal") or {}
+        if journal.get("available"):
+            avg = journal.get("averages") or {}
+            tags = ", ".join(f"{tag} ({count})" for tag, count in journal.get("top_tags", [])[:5]) or "keine"
+            signals = ", ".join(journal.get("signals") or []) or "keine"
+            journal_section = f"""
+JOURNAL (letzte {journal.get('period_days')} Tage):
+Check-ins: {journal.get('entries_count')} ({journal.get('coverage_pct')} % Abdeckung)
+Ø Stimmung/Energie/Stress: {avg.get('mood')} / {avg.get('energy')} / {avg.get('stress')}
+Ø Schlafqualität/Muskelkater: {avg.get('sleep_quality')} / {avg.get('soreness')}
+Häufige Tags: {tags}
+Signale: {signals}
+"""
+        else:
+            journal_section = "\nJOURNAL: Keine Check-ins verfügbar.\n"
 
         prompt = f"""
 Erstelle eine strukturierte wöchentliche Trainings-, Schlaf- und Körperkompositions-Zusammenfassung:
@@ -141,11 +156,13 @@ Body Battery: {weekly.get('today_body_battery', 'k.A.')}
 Ruhe-Puls: {weekly.get('today_resting_hr', 'k.A.')} bpm
 Datenabfrage: {(weekly.get('snapshot') or {}).get('fetched_time', 'k.A.')} Uhr
 {weight_section}
+{journal_section}
 Format: 5-6 Bullets:
 • Wochenfazit zu Trainingsziel und Load
 • Fitness/Fatigue/Form interpretieren
 • Schlaf und Recovery im Kontext der Belastung erklären
 • Körperkomposition trendbasiert einordnen, falls vorhanden
+• Journal-Muster nur erwähnen, wenn daraus ein konkreter Hebel ableitbar ist
 • stärkster Hebel für nächste Woche
 • konkrete Empfehlung zu Training, Erholung oder Ernährung
 Jeder Bullet maximal 24 Wörter.

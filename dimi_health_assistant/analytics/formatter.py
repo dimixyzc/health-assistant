@@ -115,6 +115,13 @@ def _coach_block(text: Optional[str], title: str = "🧠 *Coach*", max_lines: in
     return [title, *spaced_lines]
 
 
+def _md_safe(value) -> str:
+    text = str(value or "–")
+    for ch in ("\\", "_", "*", "`", "["):
+        text = text.replace(ch, f"\\{ch}")
+    return text
+
+
 def _num(value):
     if value is None:
         return None
@@ -314,6 +321,20 @@ def weekly_summary(weekly: dict, coach_text: Optional[str] = None) -> str:
         lines.append("")
         lines.append("⚖️ Keine Renpho-Daten — bitte wiegen!")
 
+    journal = weekly.get("journal") or {}
+    if journal.get("available"):
+        avg = journal.get("averages") or {}
+        lines.append("")
+        lines.append("📝 *Journal*")
+        lines.append(
+            f"Check-ins {journal.get('entries_count', 0)}/{journal.get('period_days', 7)} · "
+            f"Stimmung {avg.get('mood', '–')}/10 · Energie {avg.get('energy', '–')}/10 · "
+            f"Stress {avg.get('stress', '–')}/10"
+        )
+        tags = ", ".join(f"{_md_safe(tag)} ({count})" for tag, count in journal.get("top_tags", [])[:3])
+        if tags:
+            lines.append(f"Häufige Tags: {tags}")
+
     snapshot = weekly.get("snapshot") or {}
     footer = _gfit_footer(snapshot)
     if footer:
@@ -321,6 +342,97 @@ def weekly_summary(weekly: dict, coach_text: Optional[str] = None) -> str:
         lines.extend(footer)
 
     return "\n".join(lines)
+
+
+def journal_saved(entry: dict) -> str:
+    parts = []
+    for label, key in [
+        ("Stimmung", "mood"),
+        ("Energie", "energy"),
+        ("Stress", "stress"),
+        ("Schlafqualität", "sleep_quality"),
+        ("Muskelkater", "soreness"),
+    ]:
+        value = entry.get(key)
+        if value is not None:
+            parts.append(f"{label} {value}/10")
+    summary = " · ".join(parts) if parts else "Notiz gespeichert"
+    return (
+        f"📝 *Journal gespeichert* — {fmt_date_short(entry.get('date'))}\n\n"
+        f"{summary}\n"
+        f"Tags: {_md_safe(entry.get('tags') or '–')}"
+    )
+
+
+def journal_help() -> str:
+    return (
+        "📝 *Journal Check-in*\n\n"
+        "Nutze z.B.:\n"
+        "`/journal energie=7 stimmung=6 stress=4 schlaf=8 kater=3 tags=kaffee,spätessen Notiztext`\n\n"
+        "Kurz reicht. Ziel ist Muster erkennen, nicht Tagebuchroman."
+    )
+
+
+def journal_review(review: dict) -> str:
+    if not review.get("available"):
+        return "📝 Noch keine Journal-Einträge. Starte mit `/journal energie=7 stimmung=7 stress=4 ...`"
+
+    avg = review.get("averages") or {}
+    lines = [
+        f"📝 *Journal Review* — letzte {review.get('period_days')} Tage",
+        "",
+        f"Check-ins: {review.get('entries_count')} · Abdeckung: {review.get('coverage_pct')}%",
+        f"Stimmung {avg.get('mood', '–')}/10 · Energie {avg.get('energy', '–')}/10 · Stress {avg.get('stress', '–')}/10",
+        f"Schlafqualität {avg.get('sleep_quality', '–')}/10 · Muskelkater {avg.get('soreness', '–')}/10",
+    ]
+
+    if review.get("top_tags"):
+        tags = ", ".join(f"{_md_safe(tag)} ({count})" for tag, count in review["top_tags"])
+        lines.extend(["", f"🏷️ *Häufige Tags:* {tags}"])
+    if review.get("top_symptoms"):
+        symptoms = ", ".join(f"{_md_safe(symptom)} ({count})" for symptom, count in review["top_symptoms"])
+        lines.append(f"⚕️ *Symptome:* {symptoms}")
+    if review.get("signals"):
+        lines.append("")
+        lines.append("⚡ *Signale*")
+        lines.extend(f"• {_md_safe(signal)}" for signal in review["signals"][:4])
+    if review.get("active_experiments"):
+        lines.append("")
+        lines.append("🧪 *Aktive Experimente*")
+        for exp in review["active_experiments"][:3]:
+            lines.append(f"• #{exp.get('id')} {_md_safe(exp.get('name'))} bis {fmt_date_short(exp.get('end_date'))}")
+
+    latest = review.get("latest") or {}
+    if latest.get("note"):
+        lines.extend(["", f"Letzte Notiz: {_md_safe(latest.get('note'))}"])
+    return "\n".join(lines)
+
+
+def experiment_created(experiment: dict) -> str:
+    return (
+        f"🧪 *Experiment gestartet* #{experiment.get('id')}\n\n"
+        f"*{_md_safe(experiment.get('name'))}*\n"
+        f"Zeitraum: {fmt_date_short(experiment.get('start_date'))} bis {fmt_date_short(experiment.get('end_date'))}\n"
+        f"Zielmetrik: {_md_safe(experiment.get('target_metric') or '–')}\n"
+        f"Hypothese: {_md_safe(experiment.get('hypothesis') or '–')}"
+    )
+
+
+def experiments_list(experiments: list[dict]) -> str:
+    if not experiments:
+        return "🧪 Keine aktiven Experimente. Starte eins mit `/experiment_start Name | Hypothese | Zielmetrik`"
+    lines = ["🧪 *Aktive Experimente*", ""]
+    for exp in experiments:
+        lines.append(
+            f"#{exp.get('id')} *{_md_safe(exp.get('name'))}* · "
+            f"{fmt_date_short(exp.get('start_date'))} bis {fmt_date_short(exp.get('end_date'))}"
+        )
+        if exp.get("target_metric"):
+            lines.append(f"Ziel: {_md_safe(exp.get('target_metric'))}")
+        if exp.get("hypothesis"):
+            lines.append(f"Hypothese: {_md_safe(exp.get('hypothesis'))}")
+        lines.append("")
+    return "\n".join(lines).strip()
 
 
 def training_plan(plan: dict, coach_text: Optional[str] = None) -> str:

@@ -72,8 +72,24 @@ Falls MFA aktiv ist, muss `prompt_mfa` in `connectors/garmin.py` angepasst werde
 | `/training` | Letzte 5 Aktivitäten |
 | `/woche` | Wöchentliche Zusammenfassung |
 | `/gewicht` | Renpho Körperkomposition & 30-Tage-Trend |
+| `/journal` | Tages-Check-in speichern |
+| `/journal_review` | Journal-Muster der letzten 14 Tage |
+| `/experiment_start` | 14-Tage-Experiment starten |
+| `/experimente` | Aktive Experimente anzeigen |
 | `/tipps` | GPT-4o Trainingstipp |
 | `/status` | Schnellübersicht |
+
+Journal-Beispiel:
+
+```text
+/journal energie=7 stimmung=6 stress=4 schlaf=8 kater=3 tags=kaffee,spätessen Kurze Notiz
+```
+
+Experiment-Beispiel:
+
+```text
+/experiment_start Koffein vor 12 | Schlaf wird stabiler | Schlafqualität
+```
 
 ## Automatische Nachrichten
 
@@ -102,6 +118,8 @@ Der Bot berechnet zusätzlich eigene Coaching-Metriken:
 - **Fitness / Fatigue / Form** als Trendmodell aus Trainingslast
 - **Sleep Debt** gegen dein konfiguriertes Schlafziel
 - **Körpertrend** mit 7-Tage-Schnitt, Wochenrate und Messqualität
+- **Journal-Baselines** für Stimmung, Energie, Stress, Schlafqualität, Muskelkater und Tags
+- **Experimente** als 14-Tage-Interventionen mit Hypothese und Zielmetrik
 
 Diese Werte steuern `/plan`, `/heute`, `/training`, `/woche`, `/gewicht` und `/status`.
 

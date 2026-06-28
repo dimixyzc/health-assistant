@@ -1,5 +1,6 @@
 import unittest
-from datetime import date, datetime
+import tempfile
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -67,6 +68,17 @@ class _FakeService:
 
     def users(self):
         return _FakeUsersApi(self)
+
+
+class _FakeCreds:
+    expired = False
+    valid = True
+
+    def __init__(self, expiry=None):
+        self.expiry = expiry
+
+    def to_json(self):
+        return '{"token": "fresh"}'
 
 
 class GoogleFitTest(unittest.TestCase):
@@ -169,6 +181,29 @@ class GoogleFitTest(unittest.TestCase):
 
         self.assertIsNone(result["steps"])
         self.assertEqual(result["status"], "error")
+
+    def test_needs_refresh_inside_skew_window(self):
+        creds = _FakeCreds(datetime.now(timezone.utc) + timedelta(minutes=5))
+
+        self.assertTrue(google_fit._needs_refresh(creds))
+
+    def test_needs_refresh_false_for_later_expiry(self):
+        creds = _FakeCreds(datetime.now(timezone.utc) + timedelta(hours=1))
+
+        self.assertFalse(google_fit._needs_refresh(creds))
+
+    def test_persist_credentials_writes_primary_and_configured_mirror(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            primary = f"{tmp}/data/google_fit_token.json"
+            mirror = f"{tmp}/share/google_fit_token.json"
+
+            with patch.dict("os.environ", {"GOOGLE_FIT_TOKEN_MIRROR": mirror}):
+                google_fit._persist_credentials(_FakeCreds(), primary)
+
+            with open(primary) as f:
+                self.assertEqual(f.read(), '{"token": "fresh"}')
+            with open(mirror) as f:
+                self.assertEqual(f.read(), '{"token": "fresh"}')
 
 
 if __name__ == "__main__":

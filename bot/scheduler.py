@@ -41,6 +41,12 @@ async def send_evening_summary(bot: Bot, ai: OpenAIHealthAssistant) -> None:
         ]
         coach_text = await ai.generate_evening_summary(snapshot, today_activities)
         text = formatter.evening_summary(snapshot, today_activities, coach_text=coach_text)
+        journal_entry = await db.get_journal_entry(settings.data_dir, snapshot.get("date"))
+        if not journal_entry:
+            text += (
+                "\n\n📝 *Check-in offen*\n"
+                "`/journal energie=7 stimmung=7 stress=4 schlaf=8 tags=... kurze Notiz`"
+            )
         await bot.send_message(settings.telegram_chat_id, text, parse_mode="Markdown")
         logger.info("Abend-Zusammenfassung gesendet")
     except Exception as e:

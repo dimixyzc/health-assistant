@@ -6,7 +6,7 @@ OAuth2 Token wird in data_dir persistiert.
 import asyncio
 import logging
 import os
-from datetime import datetime, date, time, timedelta
+from datetime import datetime, date, time, timedelta, timezone
 from typing import Optional, TypedDict
 from zoneinfo import ZoneInfo
 
@@ -16,6 +16,7 @@ _SCOPES = ["https://www.googleapis.com/auth/fitness.activity.read"]
 _TOKEN_FILE = "google_fit_token.json"
 _STEP_DATA_SOURCE = "derived:com.google.step_count.delta:com.google.android.gms:estimated_steps"
 _LOCAL_TZ = ZoneInfo("Europe/Berlin")
+_REFRESH_SKEW = timedelta(minutes=10)
 
 
 class GoogleFitAuthError(Exception):
@@ -36,6 +37,52 @@ def _token_path(data_dir: str) -> str:
     return os.path.join(data_dir, _TOKEN_FILE)
 
 
+def _token_mirror_path() -> Optional[str]:
+    configured = os.getenv("GOOGLE_FIT_TOKEN_MIRROR", "").strip()
+    if configured:
+        return configured
+    if os.path.isdir("/share"):
+        return os.path.join("/share", _TOKEN_FILE)
+    return None
+
+
+def _needs_refresh(creds) -> bool:
+    if not creds:
+        return False
+    if creds.expired:
+        return True
+    expiry = getattr(creds, "expiry", None)
+    if not expiry:
+        return False
+    if expiry.tzinfo is None:
+        expiry = expiry.replace(tzinfo=timezone.utc)
+    return expiry <= datetime.now(timezone.utc) + _REFRESH_SKEW
+
+
+def _write_token_file(path: str, token_json: str) -> None:
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp_path = f"{path}.tmp.{os.getpid()}"
+    with open(tmp_path, "w") as f:
+        f.write(token_json)
+    os.replace(tmp_path, path)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+def _persist_credentials(creds, path: str) -> None:
+    token_json = creds.to_json()
+    _write_token_file(path, token_json)
+
+    mirror_path = _token_mirror_path()
+    if mirror_path and os.path.abspath(mirror_path) != os.path.abspath(path):
+        try:
+            _write_token_file(mirror_path, token_json)
+        except OSError as e:
+            logger.warning("Google Fit Token konnte nicht nach %s gespiegelt werden: %s", mirror_path, e)
+
+
 def _interactive_auth_enabled() -> bool:
     return os.getenv("GOOGLE_FIT_INTERACTIVE_AUTH", "").lower() in {"1", "true", "yes"}
 
@@ -53,15 +100,26 @@ def _build_service(client_id: str, client_secret: str, data_dir: str):
     if os.path.exists(path):
         creds = Credentials.from_authorized_user_file(path, _SCOPES)
 
+    if creds and _needs_refresh(creds) and creds.refresh_token:
+        try:
+            creds.refresh(Request())
+            _persist_credentials(creds, path)
+            logger.info("Google Fit OAuth-Token wurde automatisch erneuert.")
+        except RefreshError as e:
+            logger.warning("Google Fit OAuth-Token konnte nicht erneuert werden: %s", e)
+            raise GoogleFitAuthError(
+                "Google Fit OAuth-Token ist ungültig oder wurde widerrufen. "
+                "Bitte google_fit_token.json mit GOOGLE_FIT_INTERACTIVE_AUTH=1 neu autorisieren."
+            ) from e
+
     if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
+        if creds and creds.refresh_token:
             try:
                 creds.refresh(Request())
+                _persist_credentials(creds, path)
+                logger.info("Google Fit OAuth-Token wurde automatisch erneuert.")
             except RefreshError as e:
-                try:
-                    os.replace(path, f"{path}.invalid")
-                except OSError:
-                    pass
+                logger.warning("Google Fit OAuth-Token konnte nicht erneuert werden: %s", e)
                 raise GoogleFitAuthError(
                     "Google Fit OAuth-Token ist ungültig oder wurde widerrufen. "
                     "Bitte google_fit_token.json mit GOOGLE_FIT_INTERACTIVE_AUTH=1 neu autorisieren."
@@ -88,8 +146,7 @@ def _build_service(client_id: str, client_secret: str, data_dir: str):
                 access_type="offline",
                 prompt="consent",
             )
-        with open(path, "w") as f:
-            f.write(creds.to_json())
+            _persist_credentials(creds, path)
 
     return build("fitness", "v1", credentials=creds, cache_discovery=False)
 

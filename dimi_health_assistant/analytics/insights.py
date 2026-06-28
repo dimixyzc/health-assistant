@@ -5,6 +5,7 @@ import logging
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import Optional
+from collections import Counter
 
 from connectors import garmin as garmin_conn
 from connectors import renpho as renpho_conn
@@ -190,6 +191,7 @@ async def get_weekly_summary() -> dict:
     )
     snapshot_task = asyncio.create_task(get_daily_snapshot())
     weight_task = asyncio.create_task(get_weight_trend(days=30))
+    journal_task = asyncio.create_task(get_journal_review(days=7))
 
     # Schlafdaten für jeden Tag dieser Woche sammeln
     sleep_tasks = [
@@ -202,8 +204,8 @@ async def get_weekly_summary() -> dict:
         for i in range((today - monday).days + 1)
     ]
 
-    activities, snapshot, weight_trend, *sleep_results = await asyncio.gather(
-        activities_task, snapshot_task, weight_task, *sleep_tasks, return_exceptions=True
+    activities, snapshot, weight_trend, journal_review, *sleep_results = await asyncio.gather(
+        activities_task, snapshot_task, weight_task, journal_task, *sleep_tasks, return_exceptions=True
     )
 
     def safe(val, default):
@@ -212,6 +214,7 @@ async def get_weekly_summary() -> dict:
     activities = safe(activities, [])
     snapshot = safe(snapshot, {})
     weight_trend = safe(weight_trend, {"available": False})
+    journal_review = safe(journal_review, {"available": False})
     sleep_days = [safe(s, {}) for s in sleep_results]
 
     activities = metrics.add_activity_loads(activities)
@@ -259,6 +262,7 @@ async def get_weekly_summary() -> dict:
         "today_body_battery": snapshot.get("body_battery"),
         "today_resting_hr": snapshot.get("resting_hr"),
         "snapshot": snapshot,
+        "journal": journal_review,
         # Renpho weight trend
         "weight_available": weight_trend.get("available", False),
         "latest_weight": weight_trend.get("latest_weight"),
@@ -334,6 +338,65 @@ async def get_training_plan() -> dict:
         "weekly": weekly,
         "readiness": readiness,
         "suggested_session": _suggest_session(readiness, weekly),
+    }
+
+
+async def get_journal_review(days: int = 14) -> dict:
+    entries = await db.get_journal_entries(settings.data_dir, days=days)
+    experiments = await db.get_active_experiments(settings.data_dir)
+
+    def avg(key: str) -> Optional[float]:
+        values = [e.get(key) for e in entries if e.get(key) is not None]
+        return round(sum(values) / len(values), 1) if values else None
+
+    tag_counter: Counter[str] = Counter()
+    symptom_counter: Counter[str] = Counter()
+    for entry in entries:
+        for raw_tag in (entry.get("tags") or "").split(","):
+            tag = raw_tag.strip().lower()
+            if tag:
+                tag_counter[tag] += 1
+        for raw_symptom in (entry.get("symptoms") or "").split(","):
+            symptom = raw_symptom.strip().lower()
+            if symptom:
+                symptom_counter[symptom] += 1
+
+    latest = entries[-1] if entries else None
+    prior = entries[:-1]
+    energy_values = [e.get("energy") for e in entries if e.get("energy") is not None]
+    stress_values = [e.get("stress") for e in entries if e.get("stress") is not None]
+    signals = []
+    if energy_values and energy_values[-1] <= 4:
+        signals.append("Energie heute niedrig")
+    if stress_values and stress_values[-1] >= 7:
+        signals.append("Stress heute hoch")
+    if len(energy_values) >= 4 and sum(1 for v in energy_values[-4:] if v <= 4) >= 3:
+        signals.append("Energie mehrfach niedrig in den letzten Einträgen")
+    if len(stress_values) >= 4 and sum(1 for v in stress_values[-4:] if v >= 7) >= 3:
+        signals.append("Stress mehrfach hoch in den letzten Einträgen")
+    if latest and prior and latest.get("mood") is not None:
+        prior_moods = [e.get("mood") for e in prior if e.get("mood") is not None]
+        if prior_moods and latest["mood"] <= (sum(prior_moods) / len(prior_moods)) - 2:
+            signals.append("Stimmung deutlich unter deinem Journal-Schnitt")
+
+    return {
+        "available": bool(entries),
+        "period_days": days,
+        "entries_count": len(entries),
+        "coverage_pct": round((len(entries) / days) * 100),
+        "averages": {
+            "mood": avg("mood"),
+            "energy": avg("energy"),
+            "stress": avg("stress"),
+            "sleep_quality": avg("sleep_quality"),
+            "soreness": avg("soreness"),
+        },
+        "top_tags": tag_counter.most_common(5),
+        "top_symptoms": symptom_counter.most_common(5),
+        "latest": latest,
+        "recent_entries": entries[-7:],
+        "signals": signals,
+        "active_experiments": experiments,
     }
 
 

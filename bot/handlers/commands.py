@@ -1,4 +1,5 @@
 import logging
+import re
 
 from aiogram import Router, F
 from aiogram.filters import Command
@@ -36,6 +37,47 @@ def _asks_for_hrv_trend(text: str | None) -> bool:
     return any(term in normalized for term in hrv_terms) and any(term in normalized for term in trend_terms)
 
 
+def _command_payload(text: str | None) -> str:
+    if not text:
+        return ""
+    parts = text.split(maxsplit=1)
+    return parts[1].strip() if len(parts) > 1 else ""
+
+
+def _extract_score(payload: str, *names: str) -> int | None:
+    aliases = "|".join(re.escape(name) for name in names)
+    match = re.search(rf"(?:^|\s)(?:{aliases})\s*[:=]\s*(10|[1-9])(?:\s|$)", payload, re.IGNORECASE)
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def _extract_text_value(payload: str, *names: str) -> str | None:
+    aliases = "|".join(re.escape(name) for name in names)
+    match = re.search(rf"(?:^|\s)(?:{aliases})\s*[:=]\s*([^\s|;\n]+)", payload, re.IGNORECASE)
+    if not match:
+        return None
+    return match.group(1).strip() or None
+
+
+def _strip_key_values(payload: str) -> str:
+    cleaned = re.sub(r"(?:^|\s)\w+\s*[:=]\s*[^\s|;\n]+", " ", payload)
+    return re.sub(r"\s+", " ", cleaned).strip() or None
+
+
+def _parse_journal_payload(payload: str) -> dict:
+    return {
+        "mood": _extract_score(payload, "stimmung", "mood"),
+        "energy": _extract_score(payload, "energie", "energy"),
+        "stress": _extract_score(payload, "stress"),
+        "sleep_quality": _extract_score(payload, "schlaf", "sleep", "sleep_quality"),
+        "soreness": _extract_score(payload, "kater", "muskelkater", "soreness"),
+        "symptoms": _extract_text_value(payload, "symptome", "symptoms"),
+        "tags": _extract_text_value(payload, "tags", "tag"),
+        "note": _strip_key_values(payload),
+    }
+
+
 @router.message(Command("start", "hilfe", "help"))
 async def cmd_start(message: Message) -> None:
     if not _authorized(message):
@@ -49,6 +91,10 @@ async def cmd_start(message: Message) -> None:
         "/training — Letzte Aktivitäten\n"
         "/woche — Wöchentliche Zusammenfassung\n"
         "/gewicht — Renpho Körperkomposition & Trend\n"
+        "/journal — Tages-Check-in speichern\n"
+        "/journal_review — Journal-Muster anzeigen\n"
+        "/experiment_start — 14-Tage-Experiment starten\n"
+        "/experimente — Aktive Experimente\n"
         "/tipps — Personalisierter Trainingstipp\n"
         "/status — Schnellübersicht"
     )
@@ -174,6 +220,73 @@ async def cmd_plan(message: Message) -> None:
         logger.error(f"/plan Fehler: {e}")
         text = "⚠️ Trainingsplan konnte nicht berechnet werden."
     await message.answer(text, parse_mode="Markdown")
+
+
+@router.message(Command("journal", "checkin"))
+async def cmd_journal(message: Message) -> None:
+    if not _authorized(message):
+        return
+    payload = _command_payload(message.text)
+    if not payload:
+        await message.answer(formatter.journal_help(), parse_mode="Markdown")
+        return
+    try:
+        entry = _parse_journal_payload(payload)
+        saved = await db.upsert_journal_entry(settings.data_dir, entry)
+        await message.answer(formatter.journal_saved(saved), parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"/journal Fehler: {e}")
+        await message.answer("⚠️ Journal konnte nicht gespeichert werden.", parse_mode="Markdown")
+
+
+@router.message(Command("journal_review", "journal_heute"))
+async def cmd_journal_review(message: Message) -> None:
+    if not _authorized(message):
+        return
+    try:
+        review = await insights.get_journal_review(days=14)
+        await message.answer(formatter.journal_review(review), parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"/journal_review Fehler: {e}")
+        await message.answer("⚠️ Journal Review konnte nicht geladen werden.", parse_mode="Markdown")
+
+
+@router.message(Command("experiment_start"))
+async def cmd_experiment_start(message: Message) -> None:
+    if not _authorized(message):
+        return
+    payload = _command_payload(message.text)
+    if not payload:
+        await message.answer(
+            "🧪 Nutze: `/experiment_start Name | Hypothese | Zielmetrik`\n"
+            "Beispiel: `/experiment_start Koffein vor 12 | besserer Schlaf | Schlafqualität`",
+            parse_mode="Markdown",
+        )
+        return
+    parts = [part.strip() for part in payload.split("|")]
+    try:
+        experiment = await db.create_experiment(settings.data_dir, {
+            "name": parts[0],
+            "hypothesis": parts[1] if len(parts) > 1 else None,
+            "target_metric": parts[2] if len(parts) > 2 else None,
+            "duration_days": 14,
+        })
+        await message.answer(formatter.experiment_created(experiment), parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"/experiment_start Fehler: {e}")
+        await message.answer("⚠️ Experiment konnte nicht gestartet werden.", parse_mode="Markdown")
+
+
+@router.message(Command("experimente", "experiments"))
+async def cmd_experimente(message: Message) -> None:
+    if not _authorized(message):
+        return
+    try:
+        experiments = await db.get_active_experiments(settings.data_dir)
+        await message.answer(formatter.experiments_list(experiments), parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"/experimente Fehler: {e}")
+        await message.answer("⚠️ Experimente konnten nicht geladen werden.", parse_mode="Markdown")
 
 
 @router.message(F.text & ~F.text.startswith("/"))

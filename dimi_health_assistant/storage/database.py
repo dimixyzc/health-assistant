@@ -1,7 +1,7 @@
 import aiosqlite
 import logging
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -49,6 +49,34 @@ async def init_db(data_dir: str) -> None:
                 await db.execute(f"ALTER TABLE renpho_measurements ADD COLUMN {col} {coltype}")
             except Exception:
                 pass  # Column already exists
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS journal_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL UNIQUE,
+                mood INTEGER,
+                energy INTEGER,
+                stress INTEGER,
+                sleep_quality INTEGER,
+                soreness INTEGER,
+                symptoms TEXT,
+                tags TEXT,
+                note TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS experiments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                hypothesis TEXT,
+                target_metric TEXT,
+                start_date TEXT NOT NULL,
+                end_date TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL
+            )
+        """)
         await db.commit()
 
 
@@ -119,3 +147,129 @@ async def days_since_last_renpho(data_dir: str) -> Optional[int]:
         return None
     last_date = date.fromisoformat(latest["date"])
     return (date.today() - last_date).days
+
+
+def _clamp_score(value: Optional[int]) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        score = int(value)
+    except (TypeError, ValueError):
+        return None
+    return max(1, min(10, score))
+
+
+async def upsert_journal_entry(data_dir: str, entry: dict) -> dict:
+    entry_date = entry.get("date") or date.today().isoformat()
+    now = datetime.now().isoformat(timespec="seconds")
+    payload = {
+        "date": entry_date,
+        "mood": _clamp_score(entry.get("mood")),
+        "energy": _clamp_score(entry.get("energy")),
+        "stress": _clamp_score(entry.get("stress")),
+        "sleep_quality": _clamp_score(entry.get("sleep_quality")),
+        "soreness": _clamp_score(entry.get("soreness")),
+        "symptoms": entry.get("symptoms"),
+        "tags": entry.get("tags"),
+        "note": entry.get("note"),
+    }
+    async with aiosqlite.connect(db_path(data_dir)) as db:
+        await db.execute("""
+            INSERT INTO journal_entries
+              (date, mood, energy, stress, sleep_quality, soreness, symptoms, tags, note, created_at, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(date) DO UPDATE SET
+              mood=COALESCE(excluded.mood, journal_entries.mood),
+              energy=COALESCE(excluded.energy, journal_entries.energy),
+              stress=COALESCE(excluded.stress, journal_entries.stress),
+              sleep_quality=COALESCE(excluded.sleep_quality, journal_entries.sleep_quality),
+              soreness=COALESCE(excluded.soreness, journal_entries.soreness),
+              symptoms=COALESCE(excluded.symptoms, journal_entries.symptoms),
+              tags=COALESCE(excluded.tags, journal_entries.tags),
+              note=COALESCE(excluded.note, journal_entries.note),
+              updated_at=excluded.updated_at
+        """, (
+            payload["date"],
+            payload["mood"],
+            payload["energy"],
+            payload["stress"],
+            payload["sleep_quality"],
+            payload["soreness"],
+            payload["symptoms"],
+            payload["tags"],
+            payload["note"],
+            now,
+            now,
+        ))
+        await db.commit()
+    saved = await get_journal_entry(data_dir, entry_date)
+    return saved or payload
+
+
+async def get_journal_entry(data_dir: str, entry_date: Optional[str] = None) -> Optional[dict]:
+    target = entry_date or date.today().isoformat()
+    async with aiosqlite.connect(db_path(data_dir)) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("""
+            SELECT * FROM journal_entries WHERE date = ?
+        """, (target,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def get_journal_entries(data_dir: str, days: int = 14) -> list[dict]:
+    start = (date.today() - timedelta(days=days - 1)).isoformat()
+    async with aiosqlite.connect(db_path(data_dir)) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("""
+            SELECT * FROM journal_entries
+            WHERE date >= ?
+            ORDER BY date ASC
+        """, (start,))
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
+async def create_experiment(data_dir: str, experiment: dict) -> dict:
+    start = experiment.get("start_date") or date.today().isoformat()
+    duration_days = int(experiment.get("duration_days") or 14)
+    end = experiment.get("end_date") or (date.fromisoformat(start) + timedelta(days=duration_days - 1)).isoformat()
+    now = datetime.now().isoformat(timespec="seconds")
+    async with aiosqlite.connect(db_path(data_dir)) as db:
+        cursor = await db.execute("""
+            INSERT INTO experiments (name, hypothesis, target_metric, start_date, end_date, status, created_at)
+            VALUES (?,?,?,?,?,?,?)
+        """, (
+            experiment["name"],
+            experiment.get("hypothesis"),
+            experiment.get("target_metric"),
+            start,
+            end,
+            experiment.get("status") or "active",
+            now,
+        ))
+        await db.commit()
+        experiment_id = cursor.lastrowid
+    created = await get_experiment(data_dir, experiment_id)
+    return created or {"id": experiment_id, **experiment, "start_date": start, "end_date": end, "status": "active"}
+
+
+async def get_experiment(data_dir: str, experiment_id: int) -> Optional[dict]:
+    async with aiosqlite.connect(db_path(data_dir)) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM experiments WHERE id = ?", (experiment_id,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def get_active_experiments(data_dir: str) -> list[dict]:
+    today = date.today().isoformat()
+    async with aiosqlite.connect(db_path(data_dir)) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("""
+            SELECT * FROM experiments
+            WHERE status = 'active' AND (end_date IS NULL OR end_date >= ?)
+            ORDER BY start_date ASC, id ASC
+        """, (today,))
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
