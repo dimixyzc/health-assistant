@@ -580,5 +580,5 @@ def gfit_auth_warning(detail: Optional[str] = None) -> str:
         "*Fix:* `google_fit_token.json` mit `GOOGLE_FIT_INTERACTIVE_AUTH=1` neu autorisieren."
     )
     if detail:
-        base += f"\n\n_Detail:_ {detail}"
+        base += f"\n\n_Detail:_ {_md_safe(detail)}"
     return base
