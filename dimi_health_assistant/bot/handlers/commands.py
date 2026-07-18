@@ -1,5 +1,4 @@
 import logging
-import re
 
 from aiogram import Router, F
 from aiogram.filters import Command
@@ -44,40 +43,6 @@ def _command_payload(text: str | None) -> str:
     return parts[1].strip() if len(parts) > 1 else ""
 
 
-def _extract_score(payload: str, *names: str) -> int | None:
-    aliases = "|".join(re.escape(name) for name in names)
-    match = re.search(rf"(?:^|\s)(?:{aliases})\s*[:=]\s*(10|[1-9])(?:\s|$)", payload, re.IGNORECASE)
-    if not match:
-        return None
-    return int(match.group(1))
-
-
-def _extract_text_value(payload: str, *names: str) -> str | None:
-    aliases = "|".join(re.escape(name) for name in names)
-    match = re.search(rf"(?:^|\s)(?:{aliases})\s*[:=]\s*([^\s|;\n]+)", payload, re.IGNORECASE)
-    if not match:
-        return None
-    return match.group(1).strip() or None
-
-
-def _strip_key_values(payload: str) -> str:
-    cleaned = re.sub(r"(?:^|\s)\w+\s*[:=]\s*[^\s|;\n]+", " ", payload)
-    return re.sub(r"\s+", " ", cleaned).strip() or None
-
-
-def _parse_journal_payload(payload: str) -> dict:
-    return {
-        "mood": _extract_score(payload, "stimmung", "mood"),
-        "energy": _extract_score(payload, "energie", "energy"),
-        "stress": _extract_score(payload, "stress"),
-        "sleep_quality": _extract_score(payload, "schlaf", "sleep", "sleep_quality"),
-        "soreness": _extract_score(payload, "kater", "muskelkater", "soreness"),
-        "symptoms": _extract_text_value(payload, "symptome", "symptoms"),
-        "tags": _extract_text_value(payload, "tags", "tag"),
-        "note": _strip_key_values(payload),
-    }
-
-
 @router.message(Command("start", "hilfe", "help"))
 async def cmd_start(message: Message) -> None:
     if not _authorized(message):
@@ -91,8 +56,6 @@ async def cmd_start(message: Message) -> None:
         "/training — Letzte Aktivitäten\n"
         "/woche — Wöchentliche Zusammenfassung\n"
         "/gewicht — Renpho Körperkomposition & Trend\n"
-        "/journal — Tages-Check-in speichern\n"
-        "/journal_review — Journal-Muster anzeigen\n"
         "/experiment_start — 14-Tage-Experiment starten\n"
         "/experimente — Aktive Experimente\n"
         "/tipps — Personalisierter Trainingstipp\n"
@@ -220,35 +183,6 @@ async def cmd_plan(message: Message) -> None:
         logger.error(f"/plan Fehler: {e}")
         text = "⚠️ Trainingsplan konnte nicht berechnet werden."
     await message.answer(text, parse_mode="Markdown")
-
-
-@router.message(Command("journal", "checkin"))
-async def cmd_journal(message: Message) -> None:
-    if not _authorized(message):
-        return
-    payload = _command_payload(message.text)
-    if not payload:
-        await message.answer(formatter.journal_help(), parse_mode="Markdown")
-        return
-    try:
-        entry = _parse_journal_payload(payload)
-        saved = await db.upsert_journal_entry(settings.data_dir, entry)
-        await message.answer(formatter.journal_saved(saved), parse_mode="Markdown")
-    except Exception as e:
-        logger.error(f"/journal Fehler: {e}")
-        await message.answer("⚠️ Journal konnte nicht gespeichert werden.", parse_mode="Markdown")
-
-
-@router.message(Command("journal_review", "journal_heute"))
-async def cmd_journal_review(message: Message) -> None:
-    if not _authorized(message):
-        return
-    try:
-        review = await insights.get_journal_review(days=14)
-        await message.answer(formatter.journal_review(review), parse_mode="Markdown")
-    except Exception as e:
-        logger.error(f"/journal_review Fehler: {e}")
-        await message.answer("⚠️ Journal Review konnte nicht geladen werden.", parse_mode="Markdown")
 
 
 @router.message(Command("experiment_start"))
