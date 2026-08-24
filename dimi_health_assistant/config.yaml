@@ -1,5 +1,5 @@
 name: "Dimi Health Assistant"
-version: "1.0.17"
+version: "1.0.18"
 slug: "dimi_health_assistant"
 description: "Persönlicher Fitness-Bot: Garmin + Renpho + Google Fit + OpenAI"
 url: "https://github.com/dimixyzc/health-assistant"
@@ -43,7 +43,7 @@ schema:
   llm_proxy_app: str?
   llm_proxy_usecase: str?
   llm_proxy_env: str?
-  openai_api_key: str
+  openai_api_key: str?
   openai_model: str?
   renpho_reminder_days: int?
   sleep_goal_minutes: int?
