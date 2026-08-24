@@ -1,5 +1,6 @@
 import logging
-from typing import Optional
+from typing import Mapping, Optional
+from uuid import uuid4
 
 from openai import AsyncOpenAI
 
@@ -48,9 +49,22 @@ AUSGABEFORMAT — immer einhalten:
 
 
 class OpenAIHealthAssistant:
-    def __init__(self, api_key: str, model: str = "gpt-5.5"):
-        self._client = AsyncOpenAI(api_key=api_key)
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "gpt-5.5",
+        *,
+        base_url: str | None = None,
+        default_headers: Mapping[str, str] | None = None,
+        trace_proxy_requests: bool = False,
+    ):
+        self._client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            default_headers=default_headers,
+        )
         self._model = model
+        self._trace_proxy_requests = trace_proxy_requests
 
     async def generate_morning_briefing(self, snapshot: dict) -> str:
         readiness = snapshot.get("readiness") or {}
@@ -332,6 +346,9 @@ Format: 3-4 Bullets — 1 Erholungs-Status, dann 2-3 spezifische, umsetzbare Tip
 
     async def _chat(self, user_message: str) -> str:
         try:
+            trace_id = str(uuid4()) if self._trace_proxy_requests else None
+            if trace_id:
+                logger.info("LLM Proxy trace ID: %s", trace_id)
             response = await self._client.chat.completions.create(
                 model=self._model,
                 messages=[
@@ -339,6 +356,11 @@ Format: 3-4 Bullets — 1 Erholungs-Status, dann 2-3 spezifische, umsetzbare Tip
                     {"role": "user", "content": user_message},
                 ],
                 max_completion_tokens=10000,
+                extra_headers=(
+                    {"X-LLM-Proxy-Trace-ID": trace_id}
+                    if trace_id
+                    else None
+                ),
             )
             choice = response.choices[0]
             content = choice.message.content

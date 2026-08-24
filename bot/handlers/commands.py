@@ -5,6 +5,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from analytics import formatter, insights, metrics
+from ai.client_factory import build_ai_client
 from ai.openai_client import OpenAIHealthAssistant
 from connectors import garmin as garmin_conn
 from storage import database as db
@@ -19,7 +20,7 @@ _ai: OpenAIHealthAssistant | None = None
 def get_ai() -> OpenAIHealthAssistant:
     global _ai
     if _ai is None:
-        _ai = OpenAIHealthAssistant(settings.openai_api_key, settings.openai_model)
+        _ai = build_ai_client()
     return _ai
 
 

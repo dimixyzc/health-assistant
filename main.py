@@ -8,7 +8,7 @@ from aiogram.enums import ParseMode
 
 from bot.handlers.commands import router as commands_router
 from bot.scheduler import setup_scheduler, check_google_fit_health
-from ai.openai_client import OpenAIHealthAssistant
+from ai.client_factory import build_ai_client
 from storage.database import init_db
 from config import settings
 
@@ -45,7 +45,7 @@ async def main() -> None:
 
     dp.startup.register(_startup)
 
-    ai = OpenAIHealthAssistant(settings.openai_api_key, settings.openai_model)
+    ai = build_ai_client()
     scheduler = setup_scheduler(bot, ai)
     scheduler.start()
     logger.info("Scheduler gestartet")
