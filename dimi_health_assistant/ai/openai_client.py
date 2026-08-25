@@ -2,6 +2,7 @@ import logging
 from typing import Mapping, Optional
 from uuid import uuid4
 
+import httpx
 from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
@@ -57,11 +58,13 @@ class OpenAIHealthAssistant:
         base_url: str | None = None,
         default_headers: Mapping[str, str] | None = None,
         trace_proxy_requests: bool = False,
+        http_client: httpx.AsyncClient | None = None,
     ):
         self._client = AsyncOpenAI(
             api_key=api_key,
             base_url=base_url,
             default_headers=default_headers,
+            http_client=http_client,
         )
         self._model = model
         self._trace_proxy_requests = trace_proxy_requests

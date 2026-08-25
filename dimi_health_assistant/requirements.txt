@@ -10,3 +10,4 @@ apscheduler>=3.10.0
 aiosqlite>=0.20.0
 pydantic>=2.0.0
 python-dotenv>=1.0.0
+dnspython>=2.6.0
