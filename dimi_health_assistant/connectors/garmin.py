@@ -9,6 +9,7 @@ from garminconnect import Garmin, GarminConnectAuthenticationError
 logger = logging.getLogger(__name__)
 
 _client: Optional[Garmin] = None
+_client_lock: Optional[asyncio.Lock] = None
 
 
 def _get_token_path(data_dir: str) -> str:
@@ -20,17 +21,30 @@ def _create_client(email: str, password: str, data_dir: str) -> Garmin:
     client = Garmin(email, password, is_cn=False, prompt_mfa=None)
     try:
         client.login(token_path)
-    except Exception as e:
-        logger.info(f"Kein gültiger Token, logge mit Credentials ein... ({e})")
-        client.login(token_path)
+    except GarminConnectAuthenticationError as token_error:
+        # A cached token can be syntactically valid but rejected by Garmin. Do
+        # not keep retrying that same token; start a fresh credential login and
+        # only replace the cache after it succeeds.
+        logger.warning("Garmin-Token abgelehnt; starte neue Anmeldung: %s", token_error)
+        client = Garmin(email, password, is_cn=False, prompt_mfa=None)
+        client.login()
         client.client.dump(token_path)
     return client
 
 
 async def get_client(email: str, password: str, data_dir: str) -> Garmin:
-    global _client
-    if _client is None:
-        _client = await asyncio.to_thread(_create_client, email, password, data_dir)
+    global _client, _client_lock
+    if _client is not None:
+        return _client
+
+    # The daily snapshot starts several Garmin reads concurrently. Serialize
+    # the first login so they share one session instead of causing a burst of
+    # SSO requests (which Garmin rate-limits).
+    if _client_lock is None:
+        _client_lock = asyncio.Lock()
+    async with _client_lock:
+        if _client is None:
+            _client = await asyncio.to_thread(_create_client, email, password, data_dir)
     return _client
 
 

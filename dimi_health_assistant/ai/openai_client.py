@@ -1,8 +1,6 @@
 import logging
-from typing import Mapping, Optional
-from uuid import uuid4
+from typing import Optional
 
-import httpx
 from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
@@ -54,20 +52,9 @@ class OpenAIHealthAssistant:
         self,
         api_key: str,
         model: str = "gpt-5.5",
-        *,
-        base_url: str | None = None,
-        default_headers: Mapping[str, str] | None = None,
-        trace_proxy_requests: bool = False,
-        http_client: httpx.AsyncClient | None = None,
     ):
-        self._client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            default_headers=default_headers,
-            http_client=http_client,
-        )
+        self._client = AsyncOpenAI(api_key=api_key)
         self._model = model
-        self._trace_proxy_requests = trace_proxy_requests
 
     async def generate_morning_briefing(self, snapshot: dict) -> str:
         readiness = snapshot.get("readiness") or {}
@@ -349,27 +336,28 @@ Format: 3-4 Bullets — 1 Erholungs-Status, dann 2-3 spezifische, umsetzbare Tip
 
     async def _chat(self, user_message: str) -> str:
         try:
-            trace_id = str(uuid4()) if self._trace_proxy_requests else None
-            if trace_id:
-                logger.info("LLM Proxy trace ID: %s", trace_id)
             response = await self._client.chat.completions.create(
                 model=self._model,
                 messages=[
                     {"role": "system", "content": _ATHLETE_PROFILE},
                     {"role": "user", "content": user_message},
                 ],
-                max_completion_tokens=10000,
-                extra_headers=(
-                    {"X-LLM-Proxy-Trace-ID": trace_id}
-                    if trace_id
-                    else None
-                ),
+                max_completion_tokens=500,
             )
             choice = response.choices[0]
             content = choice.message.content
-            # gpt-5.5 kann refusal oder leeren content liefern
             refusal = getattr(choice.message, "refusal", None)
-            logger.debug(f"OpenAI content: {repr(content)} | refusal: {repr(refusal)} | finish: {choice.finish_reason}")
+            usage = getattr(response, "usage", None)
+            if usage:
+                completion_details = getattr(usage, "completion_tokens_details", None)
+                logger.info(
+                    "OpenAI usage: model=%s input_tokens=%s output_tokens=%s reasoning_tokens=%s total_tokens=%s",
+                    self._model,
+                    getattr(usage, "prompt_tokens", None),
+                    getattr(usage, "completion_tokens", None),
+                    getattr(completion_details, "reasoning_tokens", None),
+                    getattr(usage, "total_tokens", None),
+                )
             if refusal:
                 logger.warning(f"OpenAI refusal: {refusal}")
                 return ""

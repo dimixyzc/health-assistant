@@ -10,10 +10,6 @@ export RENPHO_EMAIL
 export RENPHO_PASSWORD
 export GOOGLE_CLIENT_ID
 export GOOGLE_CLIENT_SECRET
-export LLM_PROXY_API_KEY
-export LLM_PROXY_APP
-export LLM_PROXY_USECASE
-export LLM_PROXY_ENV
 export OPENAI_API_KEY
 export OPENAI_MODEL
 export RENPHO_REMINDER_DAYS
@@ -31,12 +27,8 @@ RENPHO_EMAIL="$(bashio::config 'renpho_email')"
 RENPHO_PASSWORD="$(bashio::config 'renpho_password')"
 GOOGLE_CLIENT_ID="$(bashio::config 'google_client_id')"
 GOOGLE_CLIENT_SECRET="$(bashio::config 'google_client_secret')"
-LLM_PROXY_API_KEY="$(bashio::config 'llm_proxy_api_key' '')"
-LLM_PROXY_APP="$(bashio::config 'llm_proxy_app' 'khzv-health-assistant')"
-LLM_PROXY_USECASE="$(bashio::config 'llm_proxy_usecase' 'health-coaching')"
-LLM_PROXY_ENV="$(bashio::config 'llm_proxy_env' 'dev')"
 OPENAI_API_KEY="$(bashio::config 'openai_api_key')"
-OPENAI_MODEL="$(bashio::config 'openai_model' 'gpt-4o')"
+OPENAI_MODEL="$(bashio::config 'openai_model' 'gpt-5.6-terra')"
 RENPHO_REMINDER_DAYS="$(bashio::config 'renpho_reminder_days' '5')"
 SLEEP_GOAL_MINUTES="$(bashio::config 'sleep_goal_minutes' '480')"
 WEEKLY_GYM_GOAL="$(bashio::config 'weekly_gym_goal' '3')"
@@ -44,7 +36,7 @@ WEEKLY_CARDIO_GOAL="$(bashio::config 'weekly_cardio_goal' '3')"
 TZ="$(bashio::config 'timezone' 'Europe/Berlin')"
 DATA_DIR="/data"
 
-bashio::log.info "Starting Dimi Health Assistant v1.0.21"
+bashio::log.info "Starting Dimi Health Assistant v1.0.24"
 bashio::log.info "TZ: ${TZ} | Renpho reminder nach: ${RENPHO_REMINDER_DAYS} Tagen | Schlafziel: ${SLEEP_GOAL_MINUTES} min | Cardio-Ziel: ${WEEKLY_CARDIO_GOAL}"
 
 # Google Fit Token aus /share nur übernehmen, wenn /data keinen neueren Token hat.

@@ -17,15 +17,7 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
 
     openai_api_key: str = ""
-    openai_model: str = "gpt-5.5"
-
-    # CHECK24 LLM Proxy. When this key is set, it takes precedence over
-    # OPENAI_API_KEY.
-    llm_proxy_api_key: str = ""
-    llm_proxy_base_url: str = "https://llmproxy.check24.global/api/v1/proxy/openai/auto/"
-    llm_proxy_app: str = "khzv-health-assistant"
-    llm_proxy_usecase: str = "health-coaching"
-    llm_proxy_env: str = "dev"
+    openai_model: str = "gpt-5.6-terra"
 
     renpho_reminder_days: int = 5
     sleep_goal_minutes: int = 480
