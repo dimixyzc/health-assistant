@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -5,7 +6,12 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     telegram_bot_token: str
-    telegram_chat_id: int
+    telegram_chat_id: int | None = None
+
+    @field_validator("telegram_chat_id", mode="before")
+    @classmethod
+    def empty_telegram_chat_id_is_none(cls, value):
+        return None if value is None or not str(value).strip() else value
 
     garmin_email: str
     garmin_password: str
