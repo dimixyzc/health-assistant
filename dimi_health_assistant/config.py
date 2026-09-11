@@ -27,6 +27,7 @@ class Settings(BaseSettings):
 
     renpho_reminder_days: int = 5
     sleep_goal_minutes: int = 480
+    knee_rehab_active: bool = True
     weekly_gym_goal: int = 3
     weekly_cardio_goal: int = 3
 

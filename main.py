@@ -17,8 +17,25 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     stream=sys.stdout,
 )
-logging.getLogger("ai.openai_client").setLevel(logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+
+def validate_bot_configuration(config=settings) -> None:
+    """Fail before polling when a required Telegram-bot setting is missing."""
+    required = {
+        "telegram_bot_token": getattr(config, "telegram_bot_token", ""),
+        "telegram_chat_id": getattr(config, "telegram_chat_id", None),
+        "garmin_email": getattr(config, "garmin_email", ""),
+        "garmin_password": getattr(config, "garmin_password", ""),
+        "renpho_email": getattr(config, "renpho_email", ""),
+        "renpho_password": getattr(config, "renpho_password", ""),
+        "openai_api_key": getattr(config, "openai_api_key", ""),
+    }
+    missing = [name for name, value in required.items() if value is None or not str(value).strip()]
+    if missing:
+        raise RuntimeError(
+            "Fehlende Add-on-Konfiguration: " + ", ".join(missing)
+        )
 
 
 async def on_startup(bot: Bot) -> None:
@@ -34,6 +51,7 @@ async def on_startup(bot: Bot) -> None:
 
 
 async def main() -> None:
+    validate_bot_configuration()
     bot = Bot(
         token=settings.telegram_bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN),

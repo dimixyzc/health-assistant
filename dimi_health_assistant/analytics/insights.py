@@ -365,6 +365,12 @@ def _is_cardio(activity_type: str) -> bool:
 
 
 def _suggest_session(readiness: dict, weekly: dict) -> str:
+    if settings.knee_rehab_active:
+        return (
+            "Reha-Plan des Behandlungsteams befolgen; Schlaf, regelmäßige Mahlzeiten "
+            "und ausreichende Flüssigkeit priorisieren."
+        )
+
     recommendation = readiness.get("recommendation")
     gym_remaining = weekly.get("gym_remaining", 0)
     cardio_remaining = weekly.get("cardio_remaining", 0)

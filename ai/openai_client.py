@@ -1,6 +1,5 @@
 import logging
-from typing import Mapping, Optional
-from uuid import uuid4
+from typing import Optional
 
 from openai import AsyncOpenAI
 
@@ -19,14 +18,14 @@ def _hm(minutes) -> str:
 
 
 _ATHLETE_PROFILE = """
-Du bist ein evidenzorientierter AI-Health- und Performance-Coach für Dimitri, einen Hybrid-Athleten.
-Trainingsziel: 3x pro Woche Krafttraining im Gym + 3x impact-armes Cardio pro Woche.
-Dimitri ist sportlich aktiv, verfolgt seine Daten mit einer Garmin-Uhr und einer Renpho-Waage.
+Du bist ein evidenzorientierter AI-Gesundheitsassistent für Dimitri. Er erholt sich aktuell von einer Knie-Operation.
+Der Schwerpunkt liegt auf allgemeiner Gesundheit: Erholung, Schlaf, Stress, HRV, Ruhepuls, Body Battery und langfristigen Körperdaten.
 
-WICHTIG — Trainingsrestriktionen (permanent):
-- KEIN Laufen. Niemals "Z2-Lauf", "Tempolauf", "Intervalle laufen", "Dauerlauf" oder ähnliches empfehlen.
-- Cardio-Empfehlungen sind ausschließlich impact-arm: Spinning / Indoor-Cycling, Crosstrainer / Elliptical, Schwimmen, Rudern.
-- Krafttraining ist erlaubt, aber knie-sicher: keine tiefen Kniebeugen, keine Sprünge / Plyometrie, keine instabilen einbeinigen Belastungen unter Last.
+WICHTIG — Reha-Kontext:
+- Gym, Cardio, Laufleistung und tägliche Schritte sind derzeit KEINE Ziele. Werte zu Bewegung nur als neutralen Kontext einordnen, nie als Defizit oder verpasste Vorgabe.
+- Keine Trainingspläne, Belastungssteigerungen oder Übungsanweisungen für das Knie geben. Bewegung nur erwähnen, wenn sie ausdrücklich durch Operateur oder Physiotherapie freigegeben ist.
+- Keine Aussagen zum Heilungsverlauf, keine Diagnosen und keine Heilversprechen. Bei neuen oder zunehmenden Schmerzen, Schwellung, Rötung/Überwärmung, Fieber, Atemnot oder Wadenschmerz zeitnah medizinisch abklären lassen.
+- Für allgemeine Gesundheitsmaßnahmen nur sichere, alltagstaugliche Hinweise geben, etwa Schlafrhythmus, ausreichende Flüssigkeit, regelmäßige ausgewogene Mahlzeiten und das Befolgen des Reha-Plans.
 
 AUSGABEFORMAT — immer einhalten:
 - Antworte auf Deutsch
@@ -53,23 +52,14 @@ class OpenAIHealthAssistant:
         self,
         api_key: str,
         model: str = "gpt-5.5",
-        *,
-        base_url: str | None = None,
-        default_headers: Mapping[str, str] | None = None,
-        trace_proxy_requests: bool = False,
     ):
-        self._client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            default_headers=default_headers,
-        )
+        self._client = AsyncOpenAI(api_key=api_key)
         self._model = model
-        self._trace_proxy_requests = trace_proxy_requests
 
     async def generate_morning_briefing(self, snapshot: dict) -> str:
         readiness = snapshot.get("readiness") or {}
         prompt = f"""
-Morgen-Briefing — bewerte Erholung und gib 1 konkreten Trainingstipp für heute.
+Morgen-Briefing — bewerte Erholung und gib 1 konkrete, nicht trainingsbezogene Gesundheitspriorität für heute.
 
 Readiness: {readiness.get('score', 'k.A.')}/100 ({readiness.get('recommendation', 'k.A.')})
 Limitierende Faktoren: {', '.join(readiness.get('limiting_factors') or []) or 'k.A.'}
@@ -82,8 +72,8 @@ Datenabfrage: {snapshot.get('fetched_time', 'k.A.')} Uhr
 Format: 4 Bullets:
 • Erholung/Readiness einordnen
 • Schlaf oder HRV physiologisch erklären, aber kompakt
-• Trainingsempfehlung mit grober Intensität
-• konkrete Tagessteuerung, nur wenn aus Daten ableitbar
+• eine sinnvolle Gesundheitspriorität für den Tag
+• konkrete Tagessteuerung ohne Bewegungs- oder Trainingsvorgabe
 Jeder Bullet maximal 22 Wörter.
 Keine reine Rohdatenliste.
 Keine generischen Warnsignale oder "abhängig vom Gefühl"-Hinweise.
@@ -97,7 +87,7 @@ Keine generischen Warnsignale oder "abhängig vom Gefühl"-Hinweise.
         ) or "Keine Aktivitäten heute"
 
         prompt = f"""
-Tages-Zusammenfassung — bewerte den Tag und gib 1 Tipp für morgen.
+Tages-Zusammenfassung — bewerte den Tag im Reha-Kontext und gib 1 allgemeine Gesundheitspriorität für morgen.
 
 Schritte: {snapshot.get('steps', 0)} | Aktive Min: {snapshot.get('active_minutes', 0)}
 Kalorien: {snapshot.get('calories', 0)} kcal | Stress: {snapshot.get('avg_stress', 'k.A.')}
@@ -108,10 +98,10 @@ Aktivitäten:
 {activity_lines}
 
 Format: 3-4 Bullets:
-• Tagesbelastung einordnen
+• Tagesverlauf und Bewegung neutral einordnen
 • Regenerationsbedarf erklären
 • Zusammenhang zu morgen herstellen
-• konkrete Empfehlung für Schlaf, Training oder aktive Erholung
+• konkrete Empfehlung für Schlaf, Ernährung, Flüssigkeit oder Reha-Plan
 Jeder Bullet maximal 22 Wörter.
 Keine reine Rohdatenliste.
 Body Battery abends als normalen Tagesverbrauch einordnen, nicht pauschal als schlechte Erholung.
@@ -129,7 +119,7 @@ Unterhautfett: {weekly.get('latest_subfat')} % · Viszeralfett Level: {weekly.ge
 Protein: {weekly.get('latest_protein')} % · Körperalter: {weekly.get('latest_metabolic_age')} Jahre
 """ if w_available else "\nKÖRPERKOMPOSITION: Keine Renpho-Daten diese Woche.\n"
         prompt = f"""
-Erstelle eine strukturierte wöchentliche Trainings-, Schlaf- und Körperkompositions-Zusammenfassung:
+Erstelle eine strukturierte wöchentliche Gesundheits-, Schlaf- und Körperkompositions-Zusammenfassung im Reha-Kontext:
 
 📅 Woche: {weekly.get('week_start')} bis {weekly.get('week_end')}
 
@@ -155,16 +145,16 @@ Ruhe-Puls: {weekly.get('today_resting_hr', 'k.A.')} bpm
 Datenabfrage: {(weekly.get('snapshot') or {}).get('fetched_time', 'k.A.')} Uhr
 {weight_section}
 Format: 5-6 Bullets:
-• Wochenfazit zu Trainingsziel und Load
-• Fitness/Fatigue/Form interpretieren
-• Schlaf und Recovery im Kontext der Belastung erklären
+• Wochenfazit zu Erholung und allgemeinen Gesundheitssignalen
+• Bewegung und Load nur neutral als Verlauf einordnen, niemals gegen Ziele bewerten
+• Schlaf und Recovery im Kontext des Alltags erklären
 • Körperkomposition trendbasiert einordnen, falls vorhanden
 • stärkster Hebel für nächste Woche
-• konkrete Empfehlung zu Training, Erholung oder Ernährung
+• konkrete Empfehlung zu Erholung, Ernährung oder Routine
 Jeder Bullet maximal 24 Wörter.
 Keine reine Rohdatenliste, die Statistik kommt separat.
 
-Setze die Werte in Perspektive für einen Hybrid-Athleten (3x Gym + 3x impact-armes Cardio/Woche, kein Laufen).
+Schritte, Gym und Cardio sind während der Knie-Reha ausschließlich Kontextdaten und keine Leistungsziele.
 """
         return await self._chat(prompt)
 
@@ -214,12 +204,12 @@ Keine reine Rohdatenliste.
         readiness = plan.get("readiness") or {}
         trend = weekly.get("training_trend") or {}
         prompt = f"""
-Erkläre die heutige Trainingsentscheidung evidenzorientiert.
+Erkläre den heutigen Gesundheits- und Reha-Fokus evidenzorientiert. Gib keine Trainings- oder Bewegungsanweisung.
 
 ENTSCHEIDUNG:
 Readiness: {readiness.get('score', 'k.A.')}/100
 Empfehlung: {readiness.get('recommendation', 'k.A.')}
-Vorgeschlagene Einheit: {plan.get('suggested_session', 'k.A.')}
+Vorgeschlagener Fokus: {plan.get('suggested_session', 'k.A.')}
 Limitierende Faktoren: {', '.join(readiness.get('limiting_factors') or []) or 'keine'}
 
 HEUTE:
@@ -237,10 +227,10 @@ Load: {weekly.get('total_load', 0)}
 Fitness/Fatigue/Form: {trend.get('fitness', 0)} / {trend.get('fatigue', 0)} / {trend.get('form', 0)}
 
 Format: 4 Bullets:
-• warum diese Entscheidung heute sinnvoll ist
+• warum dieser Fokus heute sinnvoll ist
 • physiologische Begründung
-• Wochenziel-Kontext
-• konkrete Anpassungsregel nur bei direktem Datenbezug
+• Wochenkontext ohne Leistungsziel
+• konkrete, nicht trainingsbezogene Anpassungsregel nur bei direktem Datenbezug
 Jeder Bullet maximal 22 Wörter.
 Keine generischen Stoppsignale, schweren-Beine-Floskeln oder offensichtlichen Warnhinweise.
 """
@@ -328,7 +318,7 @@ Zeitabhängige Werte wie Body Battery relativ zur Abfragezeit interpretieren.
         recent_types = [a.get("type") for a in recent_activities[:5]]
         readiness = snapshot.get("readiness") or {}
         prompt = f"""
-Gib einen konkreten Trainingstipp basierend auf:
+Gib einen konkreten allgemeinen Gesundheitstipp im Reha-Kontext basierend auf:
 
 Aktuelle Erholung:
 - Readiness: {readiness.get('score', 'k.A.')}/100 ({readiness.get('recommendation', 'k.A.')})
@@ -339,34 +329,35 @@ Aktuelle Erholung:
 
 Letzte 5 Aktivitäten: {', '.join(str(t) for t in recent_types)}
 
-Trainingsziel: 3x Gym + 3x impact-armes Cardio (Spinning/Crosstrainer/Rudern/Schwimmen) pro Woche als Hybrid-Athlet — kein Laufen.
-Format: 3-4 Bullets — 1 Erholungs-Status, dann 2-3 spezifische, umsetzbare Tipps.
+Bewegungsdaten sind nur Kontext, kein Ziel. Keine Belastungs-, Trainings- oder Übungsanweisung.
+Format: 3-4 Bullets — 1 Erholungs-Status, dann 2-3 spezifische, sichere Gesundheitstipps.
 """
         return await self._chat(prompt)
 
     async def _chat(self, user_message: str) -> str:
         try:
-            trace_id = str(uuid4()) if self._trace_proxy_requests else None
-            if trace_id:
-                logger.info("LLM Proxy trace ID: %s", trace_id)
             response = await self._client.chat.completions.create(
                 model=self._model,
                 messages=[
                     {"role": "system", "content": _ATHLETE_PROFILE},
                     {"role": "user", "content": user_message},
                 ],
-                max_completion_tokens=10000,
-                extra_headers=(
-                    {"X-LLM-Proxy-Trace-ID": trace_id}
-                    if trace_id
-                    else None
-                ),
+                max_completion_tokens=500,
             )
             choice = response.choices[0]
             content = choice.message.content
-            # gpt-5.5 kann refusal oder leeren content liefern
             refusal = getattr(choice.message, "refusal", None)
-            logger.debug(f"OpenAI content: {repr(content)} | refusal: {repr(refusal)} | finish: {choice.finish_reason}")
+            usage = getattr(response, "usage", None)
+            if usage:
+                completion_details = getattr(usage, "completion_tokens_details", None)
+                logger.info(
+                    "OpenAI usage: model=%s input_tokens=%s output_tokens=%s reasoning_tokens=%s total_tokens=%s",
+                    self._model,
+                    getattr(usage, "prompt_tokens", None),
+                    getattr(usage, "completion_tokens", None),
+                    getattr(completion_details, "reasoning_tokens", None),
+                    getattr(usage, "total_tokens", None),
+                )
             if refusal:
                 logger.warning(f"OpenAI refusal: {refusal}")
                 return ""

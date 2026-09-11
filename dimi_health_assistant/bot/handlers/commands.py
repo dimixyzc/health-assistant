@@ -50,16 +50,17 @@ async def cmd_start(message: Message) -> None:
         return
     text = (
         "👋 *Hallo Dimitri!*\n\n"
-        "Ich bin dein persönlicher Fitness-Assistent. Hier sind meine Befehle:\n\n"
-        "/heute — Tages-Snapshot (Schlaf, Schritte, Body Battery)\n"
-        "/plan — Konkrete Trainingsempfehlung für heute\n"
+        "Ich bin dein persönlicher Gesundheitsassistent. Während deiner Knie-Reha "
+        "sind Schritte und Training nur Kontext, keine Ziele.\n\n"
+        "/heute — Tages-Snapshot (Schlaf, Erholung, Body Battery)\n"
+        "/plan — Gesundheitsfokus für heute\n"
         "/erholung — HRV, Body Battery, Training Readiness\n"
         "/training — Letzte Aktivitäten\n"
         "/woche — Wöchentliche Zusammenfassung\n"
         "/gewicht — Renpho Körperkomposition & Trend\n"
         "/experiment_start — 14-Tage-Experiment starten\n"
         "/experimente — Aktive Experimente\n"
-        "/tipps — Personalisierter Trainingstipp\n"
+        "/tipps — Personalisierter Gesundheitstipp\n"
         "/status — Schnellübersicht"
     )
     await message.answer(text, parse_mode="Markdown")
@@ -156,7 +157,7 @@ async def cmd_gewicht(message: Message) -> None:
 async def cmd_tipps(message: Message) -> None:
     if not _authorized(message):
         return
-    await message.answer("⏳ Generiere Trainingstipp...")
+    await message.answer("⏳ Generiere Gesundheitstipp...")
     try:
         snapshot = await insights.get_daily_snapshot()
         activities = await garmin_conn.get_recent_activities(
@@ -175,14 +176,14 @@ async def cmd_tipps(message: Message) -> None:
 async def cmd_plan(message: Message) -> None:
     if not _authorized(message):
         return
-    await message.answer("⏳ Berechne Trainingsplan...")
+    await message.answer("⏳ Erstelle Gesundheitsfokus...")
     try:
         plan = await insights.get_training_plan()
         coach_text = await get_ai().generate_plan_explanation(plan)
         text = formatter.training_plan(plan, coach_text=coach_text)
     except Exception as e:
         logger.error(f"/plan Fehler: {e}")
-        text = "⚠️ Trainingsplan konnte nicht berechnet werden."
+        text = "⚠️ Gesundheitsfokus konnte nicht berechnet werden."
     await message.answer(text, parse_mode="Markdown")
 
 

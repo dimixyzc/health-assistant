@@ -1,7 +1,50 @@
-# Health Assistant — Telegram Bot
+# Health Assistant — Garmin, Renpho & ChatGPT Coach
 
-Persönlicher Fitness-Assistent für Garmin, Renpho & Google Fit.
-Läuft als Docker-Container auf dem Intel NUC neben Home Assistant.
+Persönlicher Gesundheitsassistent für Garmin, Renpho & Google Fit.
+
+## Knie-Reha-Modus
+
+Der Assistent ist standardmäßig auf die Zeit nach einer Knie-Operation eingestellt.
+Er priorisiert Schlaf, Erholung, Stress, HRV, Ruhepuls, Body Battery und
+Körperdaten. Schritte, Gym und Cardio werden nur als Kontext gezeigt — es gibt
+keine Schritt- oder Trainingsziele und keine Belastungsempfehlungen. Der Reha-
+Plan des Behandlungsteams hat immer Vorrang.
+
+Nach ärztlicher oder physiotherapeutischer Freigabe kann der frühere
+Trainingsfokus mit `KNEE_REHAB_ACTIVE=false` in `.env` wieder aktiviert werden.
+
+## ChatGPT / Codex-Automation (empfohlen)
+
+Der tägliche Datenabruf ist von Telegram und vom OpenAI Platform API Key
+entkoppelt. Die Codex-Automation startet stattdessen diesen Befehl und
+verwendet die JSON-Ausgabe als Kontext für das Coaching im Chat:
+
+```bash
+./.venv/bin/python health_report.py --report morning --pretty
+```
+
+Benötigt werden weiterhin nur die Zugangsdaten für Garmin, Renpho und optional
+Google Fit in `.env`. `OPENAI_API_KEY`, `TELEGRAM_BOT_TOKEN` und
+`TELEGRAM_CHAT_ID` sind hierfür nicht erforderlich.
+
+Der bestehende Telegram-Bot bleibt während der Umstellung unverändert nutzbar.
+Er kann erst abgeschaltet werden, wenn die ChatGPT-Automation erfolgreich läuft.
+
+Für den Abend-Check-in wird derselbe Datenabruf mit der heutigen
+Aktivitätsliste verwendet:
+
+```bash
+./.venv/bin/python health_report.py --report evening --pretty
+```
+
+## Bisheriger Telegram-Bot
+
+### Home-Assistant-Add-on
+
+Das Add-on liegt im Ordner `dimi_health_assistant/`. Nach dem Aktualisieren
+des Add-on-Repositories in Home Assistant die Version 1.0.25 installieren oder
+aktualisieren und in der Konfiguration mindestens `openai_api_key` und
+`openai_model: gpt-5.6-terra` setzen.
 
 ## Setup
 
@@ -67,14 +110,14 @@ Falls MFA aktiv ist, muss `prompt_mfa` in `connectors/garmin.py` angepasst werde
 |--------|----------|
 | `/hilfe` | Alle Befehle |
 | `/heute` | Tages-Snapshot (Schlaf, Steps, Body Battery) |
-| `/plan` | Readiness-basierte Trainingsempfehlung für heute |
+| `/plan` | Readiness-basierter Gesundheitsfokus für heute |
 | `/erholung` | HRV, Body Battery, Training Readiness |
 | `/training` | Letzte 5 Aktivitäten |
 | `/woche` | Wöchentliche Zusammenfassung |
 | `/gewicht` | Renpho Körperkomposition & 30-Tage-Trend |
 | `/experiment_start` | 14-Tage-Experiment starten |
 | `/experimente` | Aktive Experimente anzeigen |
-| `/tipps` | GPT-4o Trainingstipp |
+| `/tipps` | Personalisierter Gesundheitstipp |
 | `/status` | Schnellübersicht |
 
 Experiment-Beispiel:

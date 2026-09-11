@@ -222,7 +222,6 @@ def morning_briefing(snapshot: dict, coach_text: Optional[str] = None) -> str:
 def evening_summary(snapshot: dict, activities: list, coach_text: Optional[str] = None) -> str:
     steps_value = snapshot.get("steps", 0) or 0
     steps = fmt_steps(steps_value, snapshot.get("steps_source", ""))
-    step_goal_hit = "✅" if steps_value >= 10000 else "⏳"
 
     lines = [
         f"🌙 *Tagesabschluss — {fmt_date_short(snapshot.get('date'))}*",
@@ -238,7 +237,7 @@ def evening_summary(snapshot: dict, activities: list, coach_text: Optional[str] 
         lines.append("")
 
     lines.append("📊 *Heute*")
-    lines.append(f"👣 {steps} · Ziel {step_goal_hit}")
+    lines.append(f"👣 {steps} · Bewegungsdaten als Kontext")
     lines.append(
         f"⚡ Aktiv {snapshot.get('active_minutes', 0)} min · "
         f"🔥 {snapshot.get('calories', 0)} kcal"
@@ -259,18 +258,14 @@ def evening_summary(snapshot: dict, activities: list, coach_text: Optional[str] 
 def weekly_summary(weekly: dict, coach_text: Optional[str] = None) -> str:
     gym = weekly.get("gym_days", 0)
     cardio = weekly.get("cardio_days", 0)
-    gym_goal = weekly.get("gym_goal", 3)
-    cardio_goal = weekly.get("cardio_goal", 3)
-    gym_icon = "✅" if gym >= gym_goal else "⚠️"
-    cardio_icon = "✅" if cardio >= cardio_goal else "⚠️"
     trend = weekly.get("training_trend") or {}
     load = weekly.get("total_load", 0)
     load_status = trend.get("load_status", "–")
 
     lead = (
         f"📅 *Woche {fmt_date_short(weekly.get('week_start'))} – {fmt_date_short(weekly.get('week_end'))}*\n"
-        f"{gym_icon} Gym {gym}/{gym_goal} · {cardio_icon} Cardio {cardio}/{cardio_goal} · "
-        f"📈 Load {load} ({load_status})"
+        f"🏃 Bewegung: Gym {gym} · Cardio {cardio} · "
+        f"📈 Load {load} ({load_status}) — ohne Zielvorgabe während der Reha"
     )
 
     lines = [lead, ""]
@@ -366,13 +361,13 @@ def training_plan(plan: dict, coach_text: Optional[str] = None) -> str:
     factor_text = "\n".join(f"• {factor}" for factor in factors[:3])
 
     return (
-        f"🎯 *Trainingsplan heute*\n\n"
+        f"🎯 *Gesundheitsfokus heute*\n\n"
         f"{fmt_score(readiness.get('score'))} *{readiness.get('recommendation', '–')}*\n"
-        f"🏋️ Vorschlag: {plan.get('suggested_session', '–')}\n\n"
+        f"🩺 Fokus: {plan.get('suggested_session', '–')}\n\n"
         f"{chr(10).join(_coach_block(coach_text, max_lines=4))}"
         f"📌 *Warum:*\n{factor_text}\n\n"
-        f"📊 *Woche:* Gym {weekly.get('gym_days', 0)}/{weekly.get('gym_goal', 3)} · "
-        f"Cardio {weekly.get('cardio_days', 0)}/{weekly.get('cardio_goal', 3)}\n"
+        f"📊 *Woche:* Gym {weekly.get('gym_days', 0)} · "
+        f"Cardio {weekly.get('cardio_days', 0)} (nur Kontext)\n"
         f"🔥 Load: {weekly.get('total_load', 0)} · Form: {trend.get('form', 0)}\n"
         f"🧪 {readiness.get('calibration', '–')}"
     )
