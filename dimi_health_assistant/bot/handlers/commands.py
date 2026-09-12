@@ -2,12 +2,14 @@ import logging
 
 from aiogram import Router, F
 from aiogram.filters import Command
+from aiogram.enums import ParseMode
 from aiogram.types import Message
 
 from analytics import formatter, insights, metrics
 from ai.client_factory import build_ai_client
 from ai.openai_client import OpenAIHealthAssistant
 from connectors import garmin as garmin_conn
+from connectors import renpho as renpho_conn
 from storage import database as db
 from config import settings
 
@@ -49,7 +51,7 @@ async def cmd_start(message: Message) -> None:
     if not _authorized(message):
         return
     text = (
-        "👋 *Hallo Dimitri!*\n\n"
+        "👋 <b>Hallo Dimitri!</b>\n\n"
         "Ich bin dein persönlicher Gesundheitsassistent. Während deiner Knie-Reha "
         "sind Schritte und Training nur Kontext, keine Ziele.\n\n"
         "/heute — Tages-Snapshot (Schlaf, Erholung, Body Battery)\n"
@@ -63,7 +65,7 @@ async def cmd_start(message: Message) -> None:
         "/tipps — Personalisierter Gesundheitstipp\n"
         "/status — Schnellübersicht"
     )
-    await message.answer(text, parse_mode="Markdown")
+    await message.answer(text, parse_mode=ParseMode.HTML)
 
 
 @router.message(Command("heute"))
@@ -147,6 +149,12 @@ async def cmd_gewicht(message: Message) -> None:
         trend = await insights.get_weight_trend(days=30)
         coach_text = await get_ai().generate_weight_insight(trend)
         text = formatter.weight_summary(trend, coach_text=coach_text)
+    except renpho_conn.RenphoFetchError as e:
+        logger.error(f"/gewicht Renpho-Fehler: {e}")
+        text = (
+            "⚠️ Renpho-Daten konnten nicht abgerufen werden.\n"
+            "Bitte prüfe E-Mail und Passwort in der Add-on-Konfiguration und starte das Add-on neu."
+        )
     except Exception as e:
         logger.error(f"/gewicht Fehler: {e}")
         text = "⚠️ Fehler beim Laden der Körperdaten."

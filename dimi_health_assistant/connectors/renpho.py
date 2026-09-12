@@ -6,6 +6,10 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
+class RenphoFetchError(RuntimeError):
+    """Raised when the Renpho API cannot be queried."""
+
+
 def _make_client(email: str, password: str):
     from renpho import RenphoClient
     client = RenphoClient(email, password)
@@ -23,8 +27,8 @@ async def get_latest_measurement(email: str, password: str) -> Optional[dict]:
                 return None
             return _parse_measurement(measurements[0])  # neueste zuerst
         except Exception as e:
-            logger.error(f"Renpho Fehler: {e}")
-            return None
+            logger.exception("Renpho Fehler")
+            raise RenphoFetchError("Renpho API request failed") from e
 
     return await asyncio.to_thread(_fetch)
 
@@ -45,8 +49,8 @@ async def get_measurements_since(email: str, password: str, days: int = 30) -> l
                     result.append(parsed)
             return sorted(result, key=lambda x: x["date"])
         except Exception as e:
-            logger.error(f"Renpho Trend-Fehler: {e}")
-            return []
+            logger.exception("Renpho Trend-Fehler")
+            raise RenphoFetchError("Renpho API request failed") from e
 
     return await asyncio.to_thread(_fetch)
 
