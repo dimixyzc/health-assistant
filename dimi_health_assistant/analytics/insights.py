@@ -36,6 +36,9 @@ async def get_daily_snapshot(for_date: Optional[str] = None) -> dict:
     readiness_task = asyncio.create_task(
         garmin_conn.get_training_readiness(settings.garmin_email, settings.garmin_password, settings.data_dir)
     )
+    long_term_task = asyncio.create_task(
+        garmin_conn.get_long_term_metrics(settings.garmin_email, settings.garmin_password, settings.data_dir, target)
+    )
     gfit_task = asyncio.create_task(
         gfit_conn.get_steps(
             settings.google_client_id,
@@ -45,8 +48,8 @@ async def get_daily_snapshot(for_date: Optional[str] = None) -> dict:
         )
     )
 
-    stats, sleep, hrv, readiness, gfit_result = await asyncio.gather(
-        stats_task, sleep_task, hrv_task, readiness_task, gfit_task,
+    stats, sleep, hrv, readiness, long_term, gfit_result = await asyncio.gather(
+        stats_task, sleep_task, hrv_task, readiness_task, long_term_task, gfit_task,
         return_exceptions=True,
     )
 
@@ -58,6 +61,7 @@ async def get_daily_snapshot(for_date: Optional[str] = None) -> dict:
     sleep = safe(sleep, {})
     hrv = safe(hrv, {})
     readiness = safe(readiness, {})
+    long_term = safe(long_term, {})
     gfit_result = safe(gfit_result, {"steps": None, "status": "error", "detail": "Exception beim Abruf"})
 
     gfit_steps = gfit_result.get("steps")
@@ -91,12 +95,62 @@ async def get_daily_snapshot(for_date: Optional[str] = None) -> dict:
         "training_readiness_score": readiness.get("score"),
         "training_readiness_level": readiness.get("level"),
         "training_readiness_feedback": readiness.get("feedback"),
+        "long_term_metrics": long_term,
+        "knee_rehab_active": settings.knee_rehab_active,
     }
     snapshot["readiness"] = metrics.calculate_readiness(
         snapshot,
         sleep_goal_minutes=settings.sleep_goal_minutes,
     )
+    try:
+        await db.init_db(settings.data_dir)
+        previous = await db.get_previous_health_metrics(settings.data_dir, target)
+        snapshot["long_term_changes"] = _long_term_changes(long_term, previous)
+        for metric, threshold in (("respiration_avg", 2.0), ("spo2_avg", 2.0)):
+            value = long_term.get(metric)
+            history = await db.get_health_metric_history(settings.data_dir, metric, target, limit=3)
+            if value is not None and len(history) >= 3:
+                baseline = sum(history) / len(history)
+                delta = round(float(value) - baseline, 1)
+                if abs(delta) >= threshold and all((sample - baseline) * delta >= 0 for sample in history):
+                    snapshot["long_term_changes"][metric] = {
+                        "value": value,
+                        "previous": round(baseline, 1),
+                        "delta": delta,
+                        "sustained": True,
+                    }
+        await db.upsert_health_metrics(settings.data_dir, target, long_term)
+    except Exception as exc:
+        logger.info("Langzeitmetriken nicht gespeichert: %s", exc)
+        snapshot["long_term_changes"] = {}
     return snapshot
+
+
+def _long_term_changes(current: dict, previous: dict) -> dict:
+    """Return only meaningful changes suitable for a daily message."""
+    changes = {}
+    rules = {
+        "vo2_max": 1.0,
+        "fitness_age": 1.0,
+        "endurance_score": 3.0,
+    }
+    for metric, threshold in rules.items():
+        value = current.get(metric)
+        old = previous.get(metric)
+        if value is None or old is None:
+            continue
+        try:
+            delta = round(float(value) - float(old), 1)
+        except (TypeError, ValueError):
+            continue
+        if abs(delta) >= threshold:
+            changes[metric] = {"value": value, "previous": old, "delta": delta}
+    if current.get("training_status") and current.get("training_status") != previous.get("training_status"):
+        changes["training_status"] = {
+            "value": current["training_status"],
+            "previous": previous.get("training_status"),
+        }
+    return changes
 
 
 async def get_hrv_trend(days: int = 28) -> dict:
@@ -258,6 +312,8 @@ async def get_weekly_summary() -> dict:
         "today_hrv": snapshot.get("avg_hrv"),
         "today_body_battery": snapshot.get("body_battery"),
         "today_resting_hr": snapshot.get("resting_hr"),
+        "long_term_metrics": snapshot.get("long_term_metrics") or {},
+        "long_term_changes": snapshot.get("long_term_changes") or {},
         "snapshot": snapshot,
         # Renpho weight trend
         "weight_available": weight_trend.get("available", False),
@@ -317,7 +373,7 @@ async def get_weight_trend(days: int = 30) -> dict:
 
 
 async def get_training_plan() -> dict:
-    """Erstellt den tagesaktuellen Plan aus Readiness und Wochenziel."""
+    """Erstellt den tagesaktuellen Gesundheitsfokus aus den Erholungsdaten."""
     weekly = await get_weekly_summary()
     if isinstance(weekly, Exception):
         weekly = {}

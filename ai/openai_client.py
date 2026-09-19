@@ -2,6 +2,7 @@ import logging
 from typing import Optional
 
 from openai import AsyncOpenAI
+from storage import database as db
 
 logger = logging.getLogger(__name__)
 
@@ -52,14 +53,31 @@ class OpenAIHealthAssistant:
         self,
         api_key: str,
         model: str = "gpt-5.5",
+        data_dir: str = "/data",
     ):
         self._client = AsyncOpenAI(api_key=api_key)
         self._model = model
+        self._data_dir = data_dir
+
+    async def _recent_coaching(self, report_type: str) -> str:
+        try:
+            messages = await db.get_recent_coach_messages(self._data_dir, report_type, limit=3)
+            return "\n---\n".join(messages) if messages else "Keine früheren Coachingtexte verfügbar."
+        except Exception:
+            return "Keine früheren Coachingtexte verfügbar."
+
+    async def _remember_coaching(self, report_type: str, snapshot: dict, content: str) -> None:
+        try:
+            await db.save_coach_message(self._data_dir, report_type, content, snapshot.get("date", ""))
+        except Exception as exc:
+            logger.info("Coach-Historie nicht gespeichert: %s", exc)
 
     async def generate_morning_briefing(self, snapshot: dict) -> str:
         readiness = snapshot.get("readiness") or {}
+        previous = await self._recent_coaching("morning")
+        changes = snapshot.get("long_term_changes") or {}
         prompt = f"""
-Morgen-Briefing — bewerte Erholung und gib 1 konkrete, nicht trainingsbezogene Gesundheitspriorität für heute.
+Morgen-Briefing — bewerte Erholung und gib nur dann eine konkrete Gesundheitspriorität, wenn die Daten sie begründen.
 
 Readiness: {readiness.get('score', 'k.A.')}/100 ({readiness.get('recommendation', 'k.A.')})
 Limitierende Faktoren: {', '.join(readiness.get('limiting_factors') or []) or 'k.A.'}
@@ -67,27 +85,36 @@ Schlaf: {_hm(snapshot.get('sleep_duration_minutes'))}, Score: {snapshot.get('sle
 Tiefschlaf: {_hm(snapshot.get('deep_sleep_minutes'))} | REM: {_hm(snapshot.get('rem_sleep_minutes'))}
 HRV: {snapshot.get('avg_hrv', 'k.A.')} ms ({snapshot.get('hrv_status', 'k.A.')})
 Body Battery: {snapshot.get('body_battery', 'k.A.')} | Ruhe-Puls: {snapshot.get('resting_hr', 'k.A.')} bpm
+Reha-Modus: {snapshot.get('knee_rehab_active', True)}
+Relevante Langzeitänderungen: {changes or 'keine'}
 Datenabfrage: {snapshot.get('fetched_time', 'k.A.')} Uhr
 
-Format: 4 Bullets:
+Format: 3-4 Bullets in dieser Reihenfolge:
 • Erholung/Readiness einordnen
-• Schlaf oder HRV physiologisch erklären, aber kompakt
-• eine sinnvolle Gesundheitspriorität für den Tag
-• konkrete Tagessteuerung ohne Bewegungs- oder Trainingsvorgabe
+• stärkstes Signal mit Mechanismus → Bedeutung
+• Handlung nur bei direktem Datenbezug; sonst bewusst "Routine beibehalten"
+• optional: was morgen beobachtet werden sollte
 Jeder Bullet maximal 22 Wörter.
 Keine reine Rohdatenliste.
 Keine generischen Warnsignale oder "abhängig vom Gefühl"-Hinweise.
+Wiederhole keine Empfehlung aus den letzten Coachingtexten, außer das zugrunde liegende Signal besteht fort oder hat sich verschlechtert.
+LETZTE COACHINGTEXTE:
+{previous}
 """
-        return await self._chat(prompt)
+        result = await self._chat(prompt)
+        await self._remember_coaching("morning", snapshot, result)
+        return result
 
     async def generate_evening_summary(self, snapshot: dict, activities: list) -> str:
+        previous = await self._recent_coaching("evening")
+        morning_context = await self._recent_coaching("morning")
         activity_lines = "\n".join(
             f"- {a.get('type', '?')}: {a.get('duration_minutes')} Min, {a.get('distance_km', 0)} km, HR: {a.get('avg_hr', '?')} bpm"
             for a in activities
         ) or "Keine Aktivitäten heute"
 
         prompt = f"""
-Tages-Zusammenfassung — bewerte den Tag im Reha-Kontext und gib 1 allgemeine Gesundheitspriorität für morgen.
+Tages-Zusammenfassung — ordne den Tag ein und knüpfe an den morgendlichen Schwerpunkt an.
 
 Schritte: {snapshot.get('steps', 0)} | Aktive Min: {snapshot.get('active_minutes', 0)}
 Kalorien: {snapshot.get('calories', 0)} kcal | Stress: {snapshot.get('avg_stress', 'k.A.')}
@@ -98,15 +125,22 @@ Aktivitäten:
 {activity_lines}
 
 Format: 3-4 Bullets:
-• Tagesverlauf und Bewegung neutral einordnen
-• Regenerationsbedarf erklären
-• Zusammenhang zu morgen herstellen
-• konkrete Empfehlung für Schlaf, Ernährung, Flüssigkeit oder Reha-Plan
+• Tagesurteil
+• stärkstes neue oder bestätigte Signal
+• Zusammenhang zu morgen
+• konkrete Empfehlung nur bei direktem Datenbezug; sonst Routine beibehalten
 Jeder Bullet maximal 22 Wörter.
 Keine reine Rohdatenliste.
 Body Battery abends als normalen Tagesverbrauch einordnen, nicht pauschal als schlechte Erholung.
+Schritte und Aktivitäten sind im Reha-Modus ausschließlich Kontext.
+MORGENKONTEXT:
+{morning_context}
+LETZTE ABENDTEXTE:
+{previous}
 """
-        return await self._chat(prompt)
+        result = await self._chat(prompt)
+        await self._remember_coaching("evening", snapshot, result)
+        return result
 
     async def generate_weekly_summary(self, weekly: dict) -> str:
         w_available = weekly.get('weight_available', False)
@@ -143,6 +177,8 @@ HRV: {weekly.get('today_hrv', 'k.A.')} ms
 Body Battery: {weekly.get('today_body_battery', 'k.A.')}
 Ruhe-Puls: {weekly.get('today_resting_hr', 'k.A.')} bpm
 Datenabfrage: {(weekly.get('snapshot') or {}).get('fetched_time', 'k.A.')} Uhr
+LANGZEITMARKER:
+{weekly.get('long_term_metrics') or 'keine Daten'}
 {weight_section}
 Format: 5-6 Bullets:
 • Wochenfazit zu Erholung und allgemeinen Gesundheitssignalen

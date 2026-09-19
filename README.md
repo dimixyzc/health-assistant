@@ -154,6 +154,9 @@ Der Bot berechnet zusätzlich eigene Coaching-Metriken:
 - **Sleep Debt** gegen dein konfiguriertes Schlafziel
 - **Körpertrend** mit 7-Tage-Schnitt, Wochenrate und Messqualität
 - **Experimente** als 14-Tage-Interventionen mit Hypothese und Zielmetrik
+- **Langzeitmarker** wie VO₂max, Fitnessalter, Ausdauerwert, Trainingsstatus,
+  Atemfrequenz und SpO₂: im Wochenbericht bzw. nur bei bestätigten Änderungen,
+  nicht als tägliche Trainingsziele
 
 Diese Werte steuern `/plan`, `/heute`, `/training`, `/woche`, `/gewicht` und `/status`.
 

@@ -62,6 +62,23 @@ def fmt_steps(steps: int, source: Optional[str]) -> str:
     return f"{steps:,}{src}".replace(",", ".")
 
 
+def _steps_detail(snapshot: dict) -> str:
+    """Show both available step sources and identify which value is used."""
+    selected = snapshot.get("steps")
+    garmin = snapshot.get("garmin_steps_raw")
+    phone = snapshot.get("gfit_steps_raw")
+    parts = []
+    if garmin is not None:
+        parts.append(f"Garmin {fmt_steps(garmin, 'garmin')}")
+    if phone is not None:
+        parts.append(f"Handy {fmt_steps(phone, 'google_fit')}")
+    if not parts:
+        return "Schritte nicht verfügbar"
+    used = snapshot.get("steps_source")
+    used_label = {"garmin": "Garmin", "google_fit": "Handy", "unbekannt": "keine Quelle"}.get(used, "unbekannt")
+    return " · ".join(parts) + f" · verwendet: {used_label} ({fmt_steps(selected or 0, used)})"
+
+
 def fmt_delta(delta: Optional[float], unit: str = "") -> str:
     if delta is None:
         return "–"
@@ -93,6 +110,20 @@ def _score_icon(score: Optional[int]) -> str:
     if score >= 55:
         return "⚠️"
     return "🔴"
+
+
+def _readiness_label(score: Optional[int], rehab_active: bool = True) -> str:
+    if not rehab_active:
+        return "Hart trainieren" if score is not None and score >= 80 else "Normal trainieren"
+    if score is None:
+        return "Reserve unbekannt"
+    if score >= 85:
+        return "Hohe Reserve"
+    if score >= 70:
+        return "Solide Reserve"
+    if score >= 55:
+        return "Begrenzte Reserve"
+    return "Erholung priorisieren"
 
 
 def fmt_hrv_status(status: Optional[str]) -> str:
@@ -163,17 +194,17 @@ def _gfit_footer(snapshot: dict) -> list[str]:
     """Re-Auth-Warnung oder dezenter Hinweis dass Google Fit als Quelle verwendet wurde."""
     status = snapshot.get("gfit_status")
     source = snapshot.get("steps_source")
-    garmin_raw = snapshot.get("garmin_steps_raw") or 0
+    garmin_raw = snapshot.get("garmin_steps_raw")
 
     lines = []
 
-    if status == "auth_expired" and garmin_raw < 500:
+    if status == "auth_expired" and not garmin_raw:
         lines.append(
             "⚠️ Google Fit muss neu autorisiert werden — Token abgelaufen.\n"
             "    → `google_fit_token.json` mit `GOOGLE_FIT_INTERACTIVE_AUTH=1` erneuern."
         )
-    elif source == "google_fit" and garmin_raw < 500:
-        lines.append("ℹ️ Garmin heute nicht getragen — Schritte aus Google Fit (Handy).")
+    elif source == "google_fit" and (garmin_raw is None or garmin_raw <= 0):
+        lines.append("⚠️ Schritte heute aus Google Fit (Handy); Garmin meldete keinen verwertbaren Schrittwert.")
 
     return lines
 
@@ -187,29 +218,49 @@ def morning_briefing(snapshot: dict, coach_text: Optional[str] = None) -> str:
 
     header = (
         f"☀️ *{fmt_date_short(snapshot.get('date'))}* · "
-        f"{_score_icon(score)} *{readiness.get('recommendation', '–')}* · "
+        f"{_score_icon(score)} *{_readiness_label(score, snapshot.get('knee_rehab_active', True))}* · "
         f"{score if score is not None else '–'}/100"
     )
 
     lines = [header, ""]
+    outliers = _outlier_bullets(snapshot)
+    changes = snapshot.get("long_term_changes") or {}
+    if changes:
+        labels = {"vo2_max": "VO₂max", "fitness_age": "Fitnessalter", "endurance_score": "Ausdauerwert", "training_status": "Trainingsstatus", "respiration_avg": "Atemfrequenz", "spo2_avg": "SpO₂"}
+        units = {"vo2_max": " ml/kg/min", "fitness_age": " Jahre", "endurance_score": "%", "respiration_avg": " /min", "spo2_avg": "%"}
+        for key, change in changes.items():
+            label = labels.get(key, key)
+            delta = f" ({fmt_delta(change.get('delta'), units.get(key, ''))})" if change.get("delta") is not None else ""
+            outliers.append(f"📈 {label}: {change.get('value')}{delta}")
+    if outliers:
+        lines.append("⚡ *Heute auffällig*")
+        lines.extend(f"• {item}" for item in outliers[:4])
+        lines.append("")
+
     lines.extend(_coach_block(coach_text, max_lines=4))
     lines.append("📊 *Kurzlage*")
-    lines.append(
-        f"💤 {sleep} · Score {snapshot.get('sleep_score', '–')} · "
-        f"Tief {deep} · REM {rem}"
-    )
-    lines.append(
-        f"❤️ HRV {snapshot.get('avg_hrv', '–')} ms {fmt_hrv_status(snapshot.get('hrv_status'))} · "
-        f"🔋 BB {snapshot.get('body_battery', '–')}/100 · "
-        f"💓 RHR {snapshot.get('resting_hr', '–')} bpm"
-    )
-
-    outliers = _outlier_bullets(snapshot)
-    if outliers:
-        lines.append("")
-        lines.append("⚡ *Heute auffällig*")
-        for o in outliers:
-            lines.append(f"• {o}")
+    sleep_parts = []
+    if snapshot.get("sleep_duration_minutes") is not None:
+        sleep_parts.append(fmt_sleep(snapshot.get("sleep_duration_minutes")))
+    if snapshot.get("sleep_score") is not None:
+        sleep_parts.append(f"Score {snapshot.get('sleep_score')}")
+    if snapshot.get("deep_sleep_minutes") is not None:
+        sleep_parts.append(f"Tief {deep}")
+    if snapshot.get("rem_sleep_minutes") is not None:
+        sleep_parts.append(f"REM {rem}")
+    if sleep_parts:
+        lines.append("💤 " + " · ".join(sleep_parts))
+    recovery_parts = []
+    if snapshot.get("avg_hrv") is not None:
+        recovery_parts.append(f"HRV {snapshot.get('avg_hrv')} ms {fmt_hrv_status(snapshot.get('hrv_status'))}")
+    if snapshot.get("body_battery") is not None:
+        recovery_parts.append(f"BB {snapshot.get('body_battery')}/100")
+    if snapshot.get("resting_hr") is not None:
+        recovery_parts.append(f"RHR {snapshot.get('resting_hr')} bpm")
+    if recovery_parts:
+        lines.append("❤️ " + " · ".join(recovery_parts))
+    if snapshot.get("garmin_steps_raw") is not None or snapshot.get("gfit_steps_raw") is not None:
+        lines.append("👣 " + _steps_detail(snapshot))
 
     footer = _gfit_footer(snapshot)
     if footer:
@@ -237,15 +288,21 @@ def evening_summary(snapshot: dict, activities: list, coach_text: Optional[str] 
         lines.append("")
 
     lines.append("📊 *Heute*")
-    lines.append(f"👣 {steps} · Bewegungsdaten als Kontext")
-    lines.append(
-        f"⚡ Aktiv {snapshot.get('active_minutes', 0)} min · "
-        f"🔥 {snapshot.get('calories', 0)} kcal"
-    )
-    lines.append(
-        f"😤 Stress {snapshot.get('avg_stress', '–')} · "
-        f"🔋 BB {snapshot.get('body_battery', '–')}/100"
-    )
+    lines.append(f"👣 {_steps_detail(snapshot)} · Bewegungsdaten als Kontext")
+    activity_parts = []
+    if snapshot.get("active_minutes") is not None:
+        activity_parts.append(f"Aktiv {snapshot.get('active_minutes')} min")
+    if snapshot.get("calories") is not None:
+        activity_parts.append(f"🔥 {snapshot.get('calories')} kcal")
+    if activity_parts:
+        lines.append("⚡ " + " · ".join(activity_parts))
+    evening_parts = []
+    if snapshot.get("avg_stress") is not None:
+        evening_parts.append(f"Stress {snapshot.get('avg_stress')}")
+    if snapshot.get("body_battery") is not None:
+        evening_parts.append(f"BB {snapshot.get('body_battery')}/100")
+    if evening_parts:
+        lines.append("😤 " + " · ".join(evening_parts))
 
     footer = _gfit_footer(snapshot)
     if footer:
@@ -297,6 +354,28 @@ def weekly_summary(weekly: dict, coach_text: Optional[str] = None) -> str:
         f"BB {weekly.get('today_body_battery', '–')} · "
         f"RHR {weekly.get('today_resting_hr', '–')} bpm"
     )
+
+    long_term = weekly.get("long_term_metrics") or {}
+    if long_term.get("available") or any(long_term.get(key) is not None for key in ("vo2_max", "fitness_age", "endurance_score", "training_status")):
+        lines.append("")
+        lines.append("🧭 *Langzeitmarker*")
+        marker_parts = []
+        if long_term.get("vo2_max") is not None:
+            marker_parts.append(f"VO₂max {long_term.get('vo2_max')}")
+        if long_term.get("fitness_age") is not None:
+            marker_parts.append(f"Fitnessalter {long_term.get('fitness_age')}")
+        if long_term.get("endurance_score") is not None:
+            marker_parts.append(f"Ausdauer {long_term.get('endurance_score')}")
+        if marker_parts:
+            lines.append(" · ".join(marker_parts))
+        if long_term.get("training_status"):
+            lines.append(f"Trainingsstatus: {long_term.get('training_status')}")
+        changes = weekly.get("long_term_changes") or {}
+        for key, change in changes.items():
+            if change.get("previous") is None or change.get("delta") is None:
+                continue
+            label = {"vo2_max": "VO₂max", "fitness_age": "Fitnessalter", "endurance_score": "Ausdauerwert"}.get(key, key)
+            lines.append(f"{label}: {change.get('previous')} → {change.get('value')} ({fmt_delta(change.get('delta'))})")
 
     if weekly.get("weight_available"):
         lines.append("")
@@ -362,7 +441,7 @@ def training_plan(plan: dict, coach_text: Optional[str] = None) -> str:
 
     return (
         f"🎯 *Gesundheitsfokus heute*\n\n"
-        f"{fmt_score(readiness.get('score'))} *{readiness.get('recommendation', '–')}*\n"
+        f"{fmt_score(readiness.get('score'))} *{_readiness_label(readiness.get('score'), snapshot.get('knee_rehab_active', True))}*\n"
         f"🩺 Fokus: {plan.get('suggested_session', '–')}\n\n"
         f"{chr(10).join(_coach_block(coach_text, max_lines=4))}"
         f"📌 *Warum:*\n{factor_text}\n\n"

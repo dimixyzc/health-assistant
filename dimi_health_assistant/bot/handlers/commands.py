@@ -286,12 +286,13 @@ async def cmd_status(message: Message) -> None:
         latest_weight = await db.get_latest_renpho(settings.data_dir)
         weight_str = f"{latest_weight['weight_kg']} kg" if latest_weight else "–"
         readiness = snapshot.get("readiness") or {}
+        rehab_label = formatter._readiness_label(readiness.get('score'), snapshot.get('knee_rehab_active', True))
         text = (
             f"⚡ *Schnellstatus*\n\n"
-            f"🎯 Readiness: {formatter.fmt_score(readiness.get('score'))} — {readiness.get('recommendation', '–')}\n"
-            f"🔋 Body Battery: {snapshot.get('body_battery', '–')}\n"
-            f"❤️ HRV: {snapshot.get('avg_hrv', '–')} ms\n"
-            f"💓 Ruhe-Puls: {snapshot.get('resting_hr', '–')} bpm\n"
+            f"🎯 Readiness: {formatter.fmt_score(readiness.get('score'))} — {rehab_label}\n"
+            f"🔋 Body Battery: {snapshot.get('body_battery') if snapshot.get('body_battery') is not None else '–'}\n"
+            f"❤️ HRV: {snapshot.get('avg_hrv') if snapshot.get('avg_hrv') is not None else '–'} ms\n"
+            f"💓 Ruhe-Puls: {snapshot.get('resting_hr') if snapshot.get('resting_hr') is not None else '–'} bpm\n"
             f"👣 Schritte: {formatter.fmt_steps(snapshot.get('steps', 0), snapshot.get('steps_source', ''))}\n"
             f"💤 Schlaf: {formatter.fmt_duration(snapshot.get('sleep_duration_minutes'))}\n"
             f"⚖️ Gewicht: {weight_str}"

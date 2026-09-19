@@ -36,6 +36,8 @@ def _week_context(weekly: dict) -> dict:
         "avg_sleep_score",
         "avg_deep_sleep_minutes",
         "avg_rem_sleep_minutes",
+        "long_term_metrics",
+        "long_term_changes",
     )
     return {key: weekly.get(key) for key in keys}
 

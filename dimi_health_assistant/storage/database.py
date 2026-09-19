@@ -61,6 +61,26 @@ async def init_db(data_dir: str) -> None:
                 created_at TEXT NOT NULL
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS coach_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                report_type TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS health_metric_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                metric TEXT NOT NULL,
+                value REAL,
+                text_value TEXT,
+                created_at TEXT NOT NULL,
+                UNIQUE(date, metric)
+            )
+        """)
         await db.commit()
 
 
@@ -176,3 +196,70 @@ async def get_active_experiments(data_dir: str) -> list[dict]:
         """, (today,))
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
+
+
+async def save_coach_message(data_dir: str, report_type: str, content: str, message_date: str) -> None:
+    if not content or not message_date:
+        return
+    async with aiosqlite.connect(db_path(data_dir)) as db:
+        await db.execute(
+            "INSERT INTO coach_history (date, report_type, content, created_at) VALUES (?,?,?,?)",
+            (message_date, report_type, content, datetime.now().isoformat(timespec="seconds")),
+        )
+        await db.commit()
+
+
+async def get_recent_coach_messages(data_dir: str, report_type: str, limit: int = 5) -> list[str]:
+    async with aiosqlite.connect(db_path(data_dir)) as db:
+        cursor = await db.execute(
+            "SELECT content FROM coach_history WHERE report_type = ? ORDER BY id DESC LIMIT ?",
+            (report_type, limit),
+        )
+        rows = await cursor.fetchall()
+        return [row[0] for row in rows]
+
+
+async def upsert_health_metrics(data_dir: str, message_date: str, metrics: dict) -> None:
+    if not message_date:
+        return
+    async with aiosqlite.connect(db_path(data_dir)) as db:
+        for metric, value in (metrics or {}).items():
+            if value is None or metric in {"available", "date"}:
+                continue
+            numeric = value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+            text_value = None if numeric is not None else str(value)
+            await db.execute(
+                """INSERT INTO health_metric_history (date, metric, value, text_value, created_at)
+                   VALUES (?,?,?,?,?)
+                   ON CONFLICT(date, metric) DO UPDATE SET value=excluded.value,
+                   text_value=excluded.text_value, created_at=excluded.created_at""",
+                (message_date, metric, numeric, text_value, datetime.now().isoformat(timespec="seconds")),
+            )
+        await db.commit()
+
+
+async def get_previous_health_metrics(data_dir: str, message_date: str) -> dict:
+    async with aiosqlite.connect(db_path(data_dir)) as db:
+        cursor = await db.execute(
+            """SELECT metric, value, text_value FROM health_metric_history
+               WHERE date < ? ORDER BY date DESC, id DESC""",
+            (message_date,),
+        )
+        rows = await cursor.fetchall()
+    previous = {}
+    for metric, value, text_value in rows:
+        if metric not in previous:
+            previous[metric] = value if value is not None else text_value
+    return previous
+
+
+async def get_health_metric_history(data_dir: str, metric: str, before_date: str, limit: int = 7) -> list[float]:
+    async with aiosqlite.connect(db_path(data_dir)) as db:
+        cursor = await db.execute(
+            """SELECT value FROM health_metric_history
+               WHERE metric = ? AND date < ? AND value IS NOT NULL
+               ORDER BY date DESC LIMIT ?""",
+            (metric, before_date, limit),
+        )
+        rows = await cursor.fetchall()
+        return [row[0] for row in rows]

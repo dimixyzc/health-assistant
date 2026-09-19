@@ -5,4 +5,4 @@ from config import settings
 
 
 def build_ai_client() -> OpenAIHealthAssistant:
-    return OpenAIHealthAssistant(settings.openai_api_key, settings.openai_model)
+    return OpenAIHealthAssistant(settings.openai_api_key, settings.openai_model, settings.data_dir)

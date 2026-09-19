@@ -8,6 +8,47 @@ from garminconnect import Garmin, GarminConnectAuthenticationError
 
 logger = logging.getLogger(__name__)
 
+
+def _find_numeric(payload, names: tuple[str, ...]):
+    """Find a numeric Garmin field despite endpoint/version nesting changes."""
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            normalized = str(key).lower().replace("_", "")
+            if any(name.replace("_", "") in normalized for name in names):
+                try:
+                    if value is not None and not isinstance(value, bool):
+                        return float(value)
+                except (TypeError, ValueError):
+                    pass
+        for value in payload.values():
+            found = _find_numeric(value, names)
+            if found is not None:
+                return found
+    elif isinstance(payload, list):
+        for value in payload:
+            found = _find_numeric(value, names)
+            if found is not None:
+                return found
+    return None
+
+
+def _find_text(payload, names: tuple[str, ...]):
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            normalized = str(key).lower().replace("_", "")
+            if any(name.replace("_", "") in normalized for name in names) and value not in (None, ""):
+                return str(value)
+        for value in payload.values():
+            found = _find_text(value, names)
+            if found is not None:
+                return found
+    elif isinstance(payload, list):
+        for value in payload:
+            found = _find_text(value, names)
+            if found is not None:
+                return found
+    return None
+
 _client: Optional[Garmin] = None
 _client_lock: Optional[asyncio.Lock] = None
 
@@ -52,12 +93,26 @@ async def get_today_stats(email: str, password: str, data_dir: str) -> dict:
     client = await get_client(email, password, data_dir)
     today = date.today().isoformat()
 
-    def _fetch():
-        stats = client.get_stats(today)
-        body_battery = client.get_body_battery(today, today)
-        return stats, body_battery
+    async def _safe_call(label, call, default):
+        try:
+            return await asyncio.wait_for(asyncio.to_thread(call), timeout=12)
+        except Exception as exc:
+            logger.warning("Garmin %s nicht verfügbar: %s", label, exc)
+            return default
 
-    stats, body_battery = await asyncio.to_thread(_fetch)
+    stats = await _safe_call("Tagesstatistik", lambda: client.get_stats(today), {})
+    body_battery = await _safe_call("Body Battery", lambda: client.get_body_battery(today, today), [])
+    daily_steps = []
+    if not stats.get("totalSteps"):
+        daily_steps = await _safe_call(
+            "Schrittendpunkt", lambda: client.get_daily_steps(today, today), []
+        )
+
+    garmin_steps = stats.get("totalSteps")
+    if not garmin_steps and daily_steps:
+        entry = daily_steps[0] if isinstance(daily_steps, list) else daily_steps
+        if isinstance(entry, dict):
+            garmin_steps = entry.get("totalSteps") or entry.get("steps")
 
     battery_value = None
     if body_battery and isinstance(body_battery, list) and len(body_battery) > 0:
@@ -67,7 +122,7 @@ async def get_today_stats(email: str, password: str, data_dir: str) -> dict:
 
     return {
         "date": today,
-        "steps": stats.get("totalSteps", 0),
+        "steps": garmin_steps,
         "calories": stats.get("totalKilocalories", 0),
         "active_calories": stats.get("activeKilocalories", 0),
         "active_minutes": stats.get("highlyActiveSeconds", 0) // 60,
@@ -147,6 +202,51 @@ async def get_training_readiness(email: str, password: str, data_dir: str) -> di
         "score": entry.get("score"),
         "level": entry.get("level"),
         "feedback": entry.get("feedbackLong") or entry.get("feedback"),
+    }
+
+
+async def get_long_term_metrics(email: str, password: str, data_dir: str, for_date: Optional[str] = None) -> dict:
+    """Fetch slow-moving Garmin fitness markers without making them readiness inputs."""
+    client = await get_client(email, password, data_dir)
+    target = for_date or date.today().isoformat()
+
+    def _fetch():
+        results = {}
+        endpoints = {
+            "training_status": lambda: client.get_training_status(target),
+            "fitness_age": lambda: client.get_fitnessage_data(target),
+            "endurance": lambda: client.get_endurance_score(target),
+            "respiration": lambda: client.get_respiration_data(target),
+            "spo2": lambda: client.get_spo2_data(target),
+        }
+        for name, call in endpoints.items():
+            try:
+                results[name] = call()
+            except Exception as exc:
+                logger.info("Garmin %s nicht verfügbar: %s", name, exc)
+        return results
+
+    raw = await asyncio.to_thread(_fetch)
+    training = raw.get("training_status") or {}
+    fitness_age = raw.get("fitness_age") or {}
+    endurance = raw.get("endurance") or {}
+    respiration = raw.get("respiration") or {}
+    spo2 = raw.get("spo2") or {}
+    status = _find_text(training, ("status", "training_status", "load_status"))
+    return {
+        "vo2_max": _find_numeric(training, ("vo2max", "vo2_max", "v02max")),
+        "training_status": status,
+        "fitness_age": _find_numeric(fitness_age, ("fitnessage", "fitness_age")),
+        "endurance_score": _find_numeric(endurance, ("endurancescore", "endurance_score", "score")),
+        "respiration_avg": _find_numeric(respiration, ("averageRespirationValue", "avgRespiration", "respiration")),
+        "spo2_avg": _find_numeric(spo2, ("averageSpO2", "avgSpO2", "lastSevenDaysAvgSpO2", "spo2")),
+        "date": target,
+        "available": any(value is not None for value in (
+            _find_numeric(training, ("vo2max", "vo2_max", "v02max")),
+            status,
+            _find_numeric(fitness_age, ("fitnessage", "fitness_age")),
+            _find_numeric(endurance, ("endurancescore", "endurance_score", "score")),
+        )),
     }
 
 

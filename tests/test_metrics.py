@@ -2,9 +2,26 @@ import unittest
 from datetime import date, timedelta
 
 from analytics.metrics import activity_load, body_trend, calculate_readiness, training_trend, weekly_goal_summary
+from analytics.insights import _long_term_changes
+from connectors.garmin import _find_numeric
 
 
 class MetricsTest(unittest.TestCase):
+
+    def test_long_term_changes_only_reports_configured_thresholds(self):
+        changes = _long_term_changes(
+            {"vo2_max": 51.0, "fitness_age": 28, "endurance_score": 80, "training_status": "Productive"},
+            {"vo2_max": 50.2, "fitness_age": 27, "endurance_score": 75, "training_status": "Maintaining"},
+        )
+        self.assertNotIn("vo2_max", changes)
+        self.assertIn("fitness_age", changes)
+        self.assertIn("endurance_score", changes)
+        self.assertIn("training_status", changes)
+
+    def test_garmin_metric_extraction_handles_nested_endpoint_payloads(self):
+        payload = {"trainingStatus": {"vo2MaxValue": 51.2}, "nested": [{"fitnessAge": 28}]}
+        self.assertEqual(_find_numeric(payload, ("vo2max", "vo2_max")), 51.2)
+        self.assertEqual(_find_numeric(payload, ("fitness_age", "fitnessage")), 28.0)
     def test_activity_load_prefers_hr_zones(self):
         load = activity_load({
             "type": "running",
