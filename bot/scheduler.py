@@ -4,6 +4,7 @@ Proaktive tägliche/wöchentliche Nachrichten via APScheduler.
 import logging
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramBadRequest
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -22,7 +23,15 @@ async def send_morning_briefing(bot: Bot, ai: OpenAIHealthAssistant) -> None:
         snapshot = await insights.get_daily_snapshot()
         coach_text = await ai.generate_morning_briefing(snapshot)
         text = formatter.morning_briefing(snapshot, coach_text=coach_text)
-        await bot.send_message(settings.telegram_chat_id, text, parse_mode="Markdown")
+        try:
+            await bot.send_message(settings.telegram_chat_id, text, parse_mode="Markdown")
+        except TelegramBadRequest as exc:
+            # KI-generierter Text kann gelegentlich ungültige Markdown-Entities
+            # enthalten. Das Briefing trotzdem als Plaintext zustellen.
+            if "can't parse entities" not in str(exc).lower():
+                raise
+            logger.warning("Morgen-Briefing enthält ungültiges Markdown; sende Plaintext-Fallback.")
+            await bot.send_message(settings.telegram_chat_id, text)
         logger.info("Morgen-Briefing gesendet")
     except Exception as e:
         logger.error(f"Morgen-Briefing Fehler: {e}")

@@ -42,7 +42,7 @@ Aktivitätsliste verwendet:
 ### Home-Assistant-Add-on
 
 Das Add-on liegt im Ordner `dimi_health_assistant/`. Nach dem Aktualisieren
-des Add-on-Repositories in Home Assistant die Version 1.0.27 installieren oder
+des Add-on-Repositories in Home Assistant die Version 1.0.28 installieren oder
 aktualisieren und in der Konfiguration mindestens `openai_api_key` und
 `openai_model: gpt-5.6-terra` setzen.
 
