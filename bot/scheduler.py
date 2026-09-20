@@ -18,20 +18,23 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 
+async def _send_markdown(bot: Bot, text: str) -> None:
+    """Send Markdown when valid, otherwise deliver the content as plain text."""
+    try:
+        await bot.send_message(settings.telegram_chat_id, text, parse_mode="Markdown")
+    except TelegramBadRequest as exc:
+        if "can't parse entities" not in str(exc).lower():
+            raise
+        logger.warning("Ungültiges Markdown in geplanter Nachricht; sende Plaintext-Fallback.")
+        await bot.send_message(settings.telegram_chat_id, text)
+
+
 async def send_morning_briefing(bot: Bot, ai: OpenAIHealthAssistant) -> None:
     try:
         snapshot = await insights.get_daily_snapshot()
         coach_text = await ai.generate_morning_briefing(snapshot)
         text = formatter.morning_briefing(snapshot, coach_text=coach_text)
-        try:
-            await bot.send_message(settings.telegram_chat_id, text, parse_mode="Markdown")
-        except TelegramBadRequest as exc:
-            # KI-generierter Text kann gelegentlich ungültige Markdown-Entities
-            # enthalten. Das Briefing trotzdem als Plaintext zustellen.
-            if "can't parse entities" not in str(exc).lower():
-                raise
-            logger.warning("Morgen-Briefing enthält ungültiges Markdown; sende Plaintext-Fallback.")
-            await bot.send_message(settings.telegram_chat_id, text)
+        await _send_markdown(bot, text)
         logger.info("Morgen-Briefing gesendet")
     except Exception as e:
         logger.error(f"Morgen-Briefing Fehler: {e}")
@@ -50,7 +53,7 @@ async def send_evening_summary(bot: Bot, ai: OpenAIHealthAssistant) -> None:
         ]
         coach_text = await ai.generate_evening_summary(snapshot, today_activities)
         text = formatter.evening_summary(snapshot, today_activities, coach_text=coach_text)
-        await bot.send_message(settings.telegram_chat_id, text, parse_mode="Markdown")
+        await _send_markdown(bot, text)
         logger.info("Abend-Zusammenfassung gesendet")
     except Exception as e:
         logger.error(f"Abend-Zusammenfassung Fehler: {e}")
@@ -61,7 +64,7 @@ async def send_weekly_review(bot: Bot, ai: OpenAIHealthAssistant) -> None:
         weekly = await insights.get_weekly_summary()
         coach_text = await ai.generate_weekly_summary(weekly)
         text = formatter.weekly_summary(weekly, coach_text=coach_text)
-        await bot.send_message(settings.telegram_chat_id, text, parse_mode="Markdown")
+        await _send_markdown(bot, text)
         logger.info("Wochen-Review gesendet")
     except Exception as e:
         logger.error(f"Wochen-Review Fehler: {e}")
@@ -81,11 +84,7 @@ async def check_google_fit_health(bot: Bot) -> None:
         status = result.get("status")
         logger.info("Google Fit Health-Check: status=%s steps=%s", status, result.get("steps"))
         if status == "auth_expired":
-            await bot.send_message(
-                settings.telegram_chat_id,
-                formatter.gfit_auth_warning(result.get("detail")),
-                parse_mode="Markdown",
-            )
+            await _send_markdown(bot, formatter.gfit_auth_warning(result.get("detail")))
     except Exception as e:
         logger.warning("Google Fit Health-Check fehlgeschlagen: %s", e)
 
@@ -96,7 +95,7 @@ async def check_renpho_reminder(bot: Bot) -> None:
         if days is None or days >= settings.renpho_reminder_days:
             actual_days = days or 999
             text = formatter.renpho_reminder(actual_days)
-            await bot.send_message(settings.telegram_chat_id, text, parse_mode="Markdown")
+            await _send_markdown(bot, text)
             logger.info(f"Renpho-Erinnerung gesendet (letzte Messung vor {actual_days} Tagen)")
     except Exception as e:
         logger.error(f"Renpho-Reminder Fehler: {e}")

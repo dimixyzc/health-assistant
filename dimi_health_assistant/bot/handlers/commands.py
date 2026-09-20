@@ -47,6 +47,17 @@ def _command_payload(text: str | None) -> str:
     return parts[1].strip() if len(parts) > 1 else ""
 
 
+async def _answer_markdown(message: Message, text: str) -> None:
+    """Send Markdown when valid, otherwise deliver the content as plain text."""
+    try:
+        await message.answer(text, parse_mode="Markdown")
+    except TelegramBadRequest as exc:
+        if "can't parse entities" not in str(exc).lower():
+            raise
+        logger.warning("Ungültiges Markdown in Telegram-Antwort; sende Plaintext-Fallback.")
+        await message.answer(text)
+
+
 @router.message(Command("start", "hilfe", "help"))
 async def cmd_start(message: Message) -> None:
     if not _authorized(message):
@@ -91,13 +102,7 @@ async def cmd_heute(message: Message) -> None:
         logger.error(f"/heute Fehler: {e}")
         snapshot = {}
         text = "⚠️ Fehler beim Laden der Tagesdaten."
-    try:
-        await message.answer(text, parse_mode="Markdown")
-    except TelegramBadRequest as exc:
-        if "can't parse entities" not in str(exc).lower():
-            raise
-        logger.warning("/heute enthält ungültiges Markdown; sende Plaintext-Fallback.")
-        await message.answer(text)
+    await _answer_markdown(message, text)
 
 
 @router.message(Command("erholung"))
@@ -111,7 +116,7 @@ async def cmd_erholung(message: Message) -> None:
     except Exception as e:
         logger.error(f"/erholung Fehler: {e}")
         text = "⚠️ Fehler beim Laden der Erholungsdaten."
-    await message.answer(text, parse_mode="Markdown")
+    await _answer_markdown(message, text)
 
 
 @router.message(Command("training"))
@@ -128,7 +133,7 @@ async def cmd_training(message: Message) -> None:
     except Exception as e:
         logger.error(f"/training Fehler: {e}")
         text = "⚠️ Fehler beim Laden der Aktivitäten."
-    await message.answer(text, parse_mode="Markdown")
+    await _answer_markdown(message, text)
 
 
 @router.message(Command("woche"))
@@ -143,7 +148,7 @@ async def cmd_woche(message: Message) -> None:
     except Exception as e:
         logger.error(f"/woche Fehler: {e}")
         text = "⚠️ Fehler beim Laden der Wochendaten."
-    await message.answer(text, parse_mode="Markdown")
+    await _answer_markdown(message, text)
 
 
 @router.message(Command("gewicht"))
@@ -165,7 +170,7 @@ async def cmd_gewicht(message: Message) -> None:
     except Exception as e:
         logger.error(f"/gewicht Fehler: {e}")
         text = "⚠️ Fehler beim Laden der Körperdaten."
-    await message.answer(text, parse_mode="Markdown")
+    await _answer_markdown(message, text)
 
 
 @router.message(Command("tipps"))
@@ -184,7 +189,7 @@ async def cmd_tipps(message: Message) -> None:
         text = ""
     if not text or not text.strip():
         text = "⚠️ Tipp konnte nicht generiert werden. Bitte später erneut versuchen."
-    await message.answer(text, parse_mode="Markdown")
+    await _answer_markdown(message, text)
 
 
 @router.message(Command("plan"))
@@ -199,7 +204,7 @@ async def cmd_plan(message: Message) -> None:
     except Exception as e:
         logger.error(f"/plan Fehler: {e}")
         text = "⚠️ Gesundheitsfokus konnte nicht berechnet werden."
-    await message.answer(text, parse_mode="Markdown")
+    await _answer_markdown(message, text)
 
 
 @router.message(Command("experiment_start"))
@@ -208,10 +213,9 @@ async def cmd_experiment_start(message: Message) -> None:
         return
     payload = _command_payload(message.text)
     if not payload:
-        await message.answer(
+        await _answer_markdown(
             "🧪 Nutze: `/experiment_start Name | Hypothese | Zielmetrik`\n"
             "Beispiel: `/experiment_start Koffein vor 12 | besserer Schlaf | Schlafqualität`",
-            parse_mode="Markdown",
         )
         return
     parts = [part.strip() for part in payload.split("|")]
@@ -222,10 +226,10 @@ async def cmd_experiment_start(message: Message) -> None:
             "target_metric": parts[2] if len(parts) > 2 else None,
             "duration_days": 14,
         })
-        await message.answer(formatter.experiment_created(experiment), parse_mode="Markdown")
+        await _answer_markdown(message, formatter.experiment_created(experiment))
     except Exception as e:
         logger.error(f"/experiment_start Fehler: {e}")
-        await message.answer("⚠️ Experiment konnte nicht gestartet werden.", parse_mode="Markdown")
+        await _answer_markdown(message, "⚠️ Experiment konnte nicht gestartet werden.")
 
 
 @router.message(Command("experimente", "experiments"))
@@ -234,10 +238,10 @@ async def cmd_experimente(message: Message) -> None:
         return
     try:
         experiments = await db.get_active_experiments(settings.data_dir)
-        await message.answer(formatter.experiments_list(experiments), parse_mode="Markdown")
+        await _answer_markdown(message, formatter.experiments_list(experiments))
     except Exception as e:
         logger.error(f"/experimente Fehler: {e}")
-        await message.answer("⚠️ Experimente konnten nicht geladen werden.", parse_mode="Markdown")
+        await _answer_markdown(message, "⚠️ Experimente konnten nicht geladen werden.")
 
 
 @router.message(F.text & ~F.text.startswith("/"))
@@ -281,7 +285,7 @@ async def cmd_freitext(message: Message) -> None:
         text = ""
     if not text or not text.strip():
         text = "⚠️ Konnte die Frage nicht beantworten. Bitte anders formulieren."
-    await message.answer(text, parse_mode="Markdown")
+    await _answer_markdown(message, text)
 
 
 @router.message(Command("status"))
@@ -307,4 +311,4 @@ async def cmd_status(message: Message) -> None:
     except Exception as e:
         logger.error(f"/status Fehler: {e}")
         text = "⚠️ Fehler beim Laden des Status."
-    await message.answer(text, parse_mode="Markdown")
+    await _answer_markdown(message, text)
