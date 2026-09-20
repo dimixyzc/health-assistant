@@ -38,8 +38,7 @@ def _find_text(payload, names: tuple[str, ...]):
             normalized = str(key).lower().replace("_", "")
             if (
                 any(name.replace("_", "") in normalized for name in names)
-                and isinstance(value, (str, int, float))
-                and not isinstance(value, bool)
+                and isinstance(value, str)
                 and value != ""
             ):
                 return str(value)

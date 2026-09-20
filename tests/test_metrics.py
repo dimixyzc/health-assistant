@@ -26,6 +26,7 @@ class MetricsTest(unittest.TestCase):
     def test_garmin_text_extraction_ignores_nested_raw_status_payload(self):
         payload = {
             "status": {"recordedDevices": [{"deviceName": "Forerunner 255 Music"}]},
+            "trainingStatus": 1,
             "nested": {"trainingStatus": "PRODUCTIVE"},
         }
         self.assertEqual(_find_text(payload, ("status", "training_status")), "PRODUCTIVE")
