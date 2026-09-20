@@ -3,6 +3,7 @@ import logging
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message
 
 from analytics import formatter, insights, metrics
@@ -90,7 +91,13 @@ async def cmd_heute(message: Message) -> None:
         logger.error(f"/heute Fehler: {e}")
         snapshot = {}
         text = "⚠️ Fehler beim Laden der Tagesdaten."
-    await message.answer(text, parse_mode="Markdown")
+    try:
+        await message.answer(text, parse_mode="Markdown")
+    except TelegramBadRequest as exc:
+        if "can't parse entities" not in str(exc).lower():
+            raise
+        logger.warning("/heute enthält ungültiges Markdown; sende Plaintext-Fallback.")
+        await message.answer(text)
 
 
 @router.message(Command("erholung"))
