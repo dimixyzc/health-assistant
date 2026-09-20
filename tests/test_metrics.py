@@ -3,7 +3,7 @@ from datetime import date, timedelta
 
 from analytics.metrics import activity_load, body_trend, calculate_readiness, training_trend, weekly_goal_summary
 from analytics.insights import _long_term_changes
-from connectors.garmin import _find_numeric
+from connectors.garmin import _find_numeric, _find_text
 
 
 class MetricsTest(unittest.TestCase):
@@ -22,6 +22,13 @@ class MetricsTest(unittest.TestCase):
         payload = {"trainingStatus": {"vo2MaxValue": 51.2}, "nested": [{"fitnessAge": 28}]}
         self.assertEqual(_find_numeric(payload, ("vo2max", "vo2_max")), 51.2)
         self.assertEqual(_find_numeric(payload, ("fitness_age", "fitnessage")), 28.0)
+
+    def test_garmin_text_extraction_ignores_nested_raw_status_payload(self):
+        payload = {
+            "status": {"recordedDevices": [{"deviceName": "Forerunner 255 Music"}]},
+            "nested": {"trainingStatus": "PRODUCTIVE"},
+        }
+        self.assertEqual(_find_text(payload, ("status", "training_status")), "PRODUCTIVE")
     def test_activity_load_prefers_hr_zones(self):
         load = activity_load({
             "type": "running",

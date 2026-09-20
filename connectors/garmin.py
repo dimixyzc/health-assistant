@@ -36,7 +36,12 @@ def _find_text(payload, names: tuple[str, ...]):
     if isinstance(payload, dict):
         for key, value in payload.items():
             normalized = str(key).lower().replace("_", "")
-            if any(name.replace("_", "") in normalized for name in names) and value not in (None, ""):
+            if (
+                any(name.replace("_", "") in normalized for name in names)
+                and isinstance(value, (str, int, float))
+                and not isinstance(value, bool)
+                and value != ""
+            ):
                 return str(value)
         for value in payload.values():
             found = _find_text(value, names)
