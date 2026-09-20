@@ -55,7 +55,7 @@ async def _answer_markdown(message: Message, text: str) -> None:
         if "can't parse entities" not in str(exc).lower():
             raise
         logger.warning("Ungültiges Markdown in Telegram-Antwort; sende Plaintext-Fallback.")
-        await message.answer(text)
+        await message.answer(text, parse_mode=None)
 
 
 @router.message(Command("start", "hilfe", "help"))

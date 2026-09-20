@@ -54,7 +54,7 @@ async def main() -> None:
     validate_bot_configuration()
     bot = Bot(
         token=settings.telegram_bot_token,
-        default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN),
+        default=DefaultBotProperties(),
     )
     dp = Dispatcher()
     dp.include_router(commands_router)

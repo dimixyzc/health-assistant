@@ -26,7 +26,7 @@ async def _send_markdown(bot: Bot, text: str) -> None:
         if "can't parse entities" not in str(exc).lower():
             raise
         logger.warning("Ungültiges Markdown in geplanter Nachricht; sende Plaintext-Fallback.")
-        await bot.send_message(settings.telegram_chat_id, text)
+        await bot.send_message(settings.telegram_chat_id, text, parse_mode=None)
 
 
 async def send_morning_briefing(bot: Bot, ai: OpenAIHealthAssistant) -> None:
