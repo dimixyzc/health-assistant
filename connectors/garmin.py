@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import time
 from datetime import date, timedelta
 from typing import Optional
 
@@ -55,6 +56,42 @@ def _find_text(payload, names: tuple[str, ...]):
 
 _client: Optional[Garmin] = None
 _client_lock: Optional[asyncio.Lock] = None
+_login_task: Optional[asyncio.Task] = None
+_login_retry_after = 0.0
+_LOGIN_TIMEOUT_SECONDS = 45
+_LOGIN_COOLDOWN_SECONDS = 15 * 60
+
+
+class GarminUnavailableError(RuntimeError):
+    """Garmin login is running, cooling down, or has failed."""
+
+
+def _cooldown_message() -> str:
+    return (
+        "Garmin ist vorübergehend nicht erreichbar. Weitere Login-Versuche sind "
+        "pausiert, um Garmins Sperre nicht zu verlängern. Prüfe E-Mail und Passwort "
+        "in Home Assistant → Einstellungen → Apps → Dimi Health Assistant."
+    )
+
+
+async def _login_once(email: str, password: str, data_dir: str) -> Optional[Garmin]:
+    """Run one login attempt; cache failures so concurrent callers cannot retry in a burst."""
+    global _client, _login_retry_after
+    try:
+        client = await asyncio.to_thread(_create_client, email, password, data_dir)
+    except Exception as exc:
+        _login_retry_after = max(
+            _login_retry_after, time.monotonic() + _LOGIN_COOLDOWN_SECONDS
+        )
+        logger.warning(
+            "Garmin-Anmeldung fehlgeschlagen; pausiere weitere Versuche für 15 Minuten: %s",
+            exc,
+        )
+        return None
+    _client = client
+    _login_retry_after = 0.0
+    logger.info("Garmin-Anmeldung erfolgreich.")
+    return client
 
 
 def _get_token_path(data_dir: str) -> str:
@@ -78,19 +115,42 @@ def _create_client(email: str, password: str, data_dir: str) -> Garmin:
 
 
 async def get_client(email: str, password: str, data_dir: str) -> Garmin:
-    global _client, _client_lock
+    global _client, _client_lock, _login_task, _login_retry_after
     if _client is not None:
         return _client
 
-    # The daily snapshot starts several Garmin reads concurrently. Serialize
-    # the first login so they share one session instead of causing a burst of
-    # SSO requests (which Garmin rate-limits).
     if _client_lock is None:
         _client_lock = asyncio.Lock()
     async with _client_lock:
-        if _client is None:
-            _client = await asyncio.to_thread(_create_client, email, password, data_dir)
-    return _client
+        if _client is not None:
+            return _client
+        if time.monotonic() < _login_retry_after:
+            raise GarminUnavailableError(_cooldown_message())
+        if _login_task is None or _login_task.done():
+            _login_task = asyncio.create_task(_login_once(email, password, data_dir))
+        login_task = _login_task
+
+    try:
+        client = await asyncio.wait_for(
+            asyncio.shield(login_task), timeout=_LOGIN_TIMEOUT_SECONDS
+        )
+    except asyncio.TimeoutError as exc:
+        # The library's internal fallback strategies can take minutes. Keep its
+        # single worker in flight, but return promptly and block new attempts.
+        if _client is not None:
+            return _client
+        _login_retry_after = max(
+            _login_retry_after, time.monotonic() + _LOGIN_COOLDOWN_SECONDS
+        )
+        logger.warning(
+            "Garmin-Anmeldung dauert länger als %s Sekunden; weitere Versuche pausiert.",
+            _LOGIN_TIMEOUT_SECONDS,
+        )
+        raise GarminUnavailableError(_cooldown_message()) from exc
+
+    if client is None:
+        raise GarminUnavailableError(_cooldown_message())
+    return client
 
 
 async def get_today_stats(email: str, password: str, data_dir: str) -> dict:

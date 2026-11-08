@@ -106,9 +106,14 @@ async def cmd_heute(message: Message) -> None:
     await message.answer("⏳ Hole Tagesdaten...")
     try:
         snapshot = await insights.get_daily_snapshot()
-        activities = await garmin_conn.get_recent_activities(
-            settings.garmin_email, settings.garmin_password, settings.data_dir, limit=3
-        )
+        garmin_warning = ""
+        try:
+            activities = await garmin_conn.get_recent_activities(
+                settings.garmin_email, settings.garmin_password, settings.data_dir, limit=3
+            )
+        except garmin_conn.GarminUnavailableError as e:
+            activities = []
+            garmin_warning = f"\n\n⚠️ {e}"
         today_activities = [
             a for a in activities
             if a.get("start_time", "").startswith(snapshot["date"])
@@ -117,6 +122,7 @@ async def cmd_heute(message: Message) -> None:
         text = formatter.morning_briefing(snapshot, coach_text=coach_text)
         if today_activities:
             text += "\n\n" + formatter.activity_list(today_activities)
+        text += garmin_warning
     except Exception as e:
         logger.error(f"/heute Fehler: {e}")
         snapshot = {}

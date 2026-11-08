@@ -1,3 +1,12 @@
+# 1.1.2
+
+- Garmin-Anmeldungen laufen nur noch einmal gleichzeitig; parallele Aufrufe
+  starten keine neuen Login-Wellen.
+- Nach 45 Sekunden gibt der Bot eine verständliche Rückmeldung zurück und
+  pausiert weitere Garmin-Login-Versuche für 15 Minuten.
+- `/heute` liefert weiterhin die verfügbaren Daten und kennzeichnet Garmin
+  separat als vorübergehend nicht erreichbar.
+
 # 1.1.1
 
 - Tokenarmer Quellenkontext: zwei Auszüge mit je höchstens 850 Zeichen,
