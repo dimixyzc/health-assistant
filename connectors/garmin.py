@@ -62,6 +62,46 @@ _LOGIN_TIMEOUT_SECONDS = 45
 _LOGIN_COOLDOWN_SECONDS = 15 * 60
 
 
+def _cooldown_path(data_dir: str) -> str:
+    return os.path.join(data_dir, ".garmin_login_retry_after")
+
+
+def _load_login_retry_after(data_dir: str) -> float:
+    try:
+        with open(_cooldown_path(data_dir), encoding="utf-8") as cooldown_file:
+            retry_after = float(cooldown_file.read().strip())
+        return retry_after if retry_after > time.time() else 0.0
+    except (OSError, ValueError):
+        return 0.0
+
+
+def _pause_login(data_dir: str) -> None:
+    global _login_retry_after
+    _login_retry_after = max(
+        _login_retry_after, time.time() + _LOGIN_COOLDOWN_SECONDS
+    )
+    try:
+        os.makedirs(data_dir, exist_ok=True)
+        path = _cooldown_path(data_dir)
+        temporary_path = f"{path}.tmp"
+        with open(temporary_path, "w", encoding="utf-8") as cooldown_file:
+            cooldown_file.write(str(_login_retry_after))
+        os.replace(temporary_path, path)
+    except OSError as exc:
+        logger.warning("Garmin-Pause konnte nicht gespeichert werden: %s", exc)
+
+
+def _clear_login_pause(data_dir: str) -> None:
+    global _login_retry_after
+    _login_retry_after = 0.0
+    try:
+        os.remove(_cooldown_path(data_dir))
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        logger.warning("Abgelaufene Garmin-Pause konnte nicht entfernt werden: %s", exc)
+
+
 class GarminUnavailableError(RuntimeError):
     """Garmin login is running, cooling down, or has failed."""
 
@@ -80,16 +120,14 @@ async def _login_once(email: str, password: str, data_dir: str) -> Optional[Garm
     try:
         client = await asyncio.to_thread(_create_client, email, password, data_dir)
     except Exception as exc:
-        _login_retry_after = max(
-            _login_retry_after, time.monotonic() + _LOGIN_COOLDOWN_SECONDS
-        )
+        _pause_login(data_dir)
         logger.warning(
             "Garmin-Anmeldung fehlgeschlagen; pausiere weitere Versuche für 15 Minuten: %s",
             exc,
         )
         return None
     _client = client
-    _login_retry_after = 0.0
+    _clear_login_pause(data_dir)
     logger.info("Garmin-Anmeldung erfolgreich.")
     return client
 
@@ -124,7 +162,9 @@ async def get_client(email: str, password: str, data_dir: str) -> Garmin:
     async with _client_lock:
         if _client is not None:
             return _client
-        if time.monotonic() < _login_retry_after:
+        if _login_retry_after == 0.0:
+            _login_retry_after = _load_login_retry_after(data_dir)
+        if time.time() < _login_retry_after:
             raise GarminUnavailableError(_cooldown_message())
         if _login_task is None or _login_task.done():
             _login_task = asyncio.create_task(_login_once(email, password, data_dir))
@@ -139,9 +179,7 @@ async def get_client(email: str, password: str, data_dir: str) -> Garmin:
         # single worker in flight, but return promptly and block new attempts.
         if _client is not None:
             return _client
-        _login_retry_after = max(
-            _login_retry_after, time.monotonic() + _LOGIN_COOLDOWN_SECONDS
-        )
+        _pause_login(data_dir)
         logger.warning(
             "Garmin-Anmeldung dauert länger als %s Sekunden; weitere Versuche pausiert.",
             _LOGIN_TIMEOUT_SECONDS,

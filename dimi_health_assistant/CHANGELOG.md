@@ -1,3 +1,9 @@
+# 1.1.3
+
+- Garmin-Anmeldepause wird in `/data` gespeichert und bleibt bei Neustarts
+  bestehen, damit ein Neustart keine neue Login-Welle auslöst.
+- Versionsanzeige im Add-on-Log auf 1.1.3 aktualisiert.
+
 # 1.1.2
 
 - Garmin-Anmeldungen laufen nur noch einmal gleichzeitig; parallele Aufrufe
