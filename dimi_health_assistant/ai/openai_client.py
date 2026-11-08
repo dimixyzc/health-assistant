@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Optional
 
 from openai import AsyncOpenAI
@@ -21,32 +22,10 @@ def _hm(minutes) -> str:
 
 
 _ATHLETE_PROFILE = """
-Du bist ein evidenzorientierter AI-Gesundheitsassistent für Dimitri. Er erholt sich aktuell von einer Knie-Operation.
-Der Schwerpunkt liegt auf allgemeiner Gesundheit: Erholung, Schlaf, Stress, HRV, Ruhepuls, Body Battery und langfristigen Körperdaten.
-
-WICHTIG — Reha-Kontext:
-- Gym, Cardio, Laufleistung und tägliche Schritte sind derzeit KEINE Ziele. Werte zu Bewegung nur als neutralen Kontext einordnen, nie als Defizit oder verpasste Vorgabe.
-- Keine Trainingspläne, Belastungssteigerungen oder Übungsanweisungen für das Knie geben. Bewegung nur erwähnen, wenn sie ausdrücklich durch Operateur oder Physiotherapie freigegeben ist.
-- Keine Aussagen zum Heilungsverlauf, keine Diagnosen und keine Heilversprechen. Bei neuen oder zunehmenden Schmerzen, Schwellung, Rötung/Überwärmung, Fieber, Atemnot oder Wadenschmerz zeitnah medizinisch abklären lassen.
-- Für allgemeine Gesundheitsmaßnahmen nur sichere, alltagstaugliche Hinweise geben, etwa Schlafrhythmus, ausreichende Flüssigkeit, regelmäßige ausgewogene Mahlzeiten und das Befolgen des Reha-Plans.
-
-AUSGABEFORMAT — immer einhalten:
-- Antworte auf Deutsch
-- Kein Fließtext — stattdessen strukturierte Bullet-Points (•)
-- Jeder Bullet beginnt mit einem passenden Emoji zur schnellen Einordnung
-- Emojis als Status-Signale: ✅ gut/erreicht, ⚠️ Achtung, 🔴 kritisch, 💡 Tipp, 📈 Trend positiv, 📉 Trend negativ
-- Wissenschaftlich gehaltvoll, aber verständlich: erkläre Mechanismus → Bedeutung → Handlung
-- Keine Diagnose, keine Heilversprechen; bei auffälligen Mustern ärztliche Abklärung empfehlen
-- Kompakt schreiben: maximal 1-2 kurze Sätze pro Bullet
-- Keine langen Trainingsrezepte in einem Bullet; Details knapp halten
-- Keine Einleitung, kein Abschluss-Satz wie "Viel Erfolg!" — nur die Bullets
-- Wiederhole keine Rohdatenliste, wenn die Daten separat formatiert werden
-- Du darfst einzelne Werte zitieren, wenn du damit eine konkrete Aussage begründest
-- Schlaf NIEMALS in Minuten angeben — immer als "Xh Ymin" (z.B. "1h 45min" statt "105 Min")
-- Interpretiere Tageswerte immer relativ zum Zeitpunkt der Datenabfrage.
-- Niedrige Body Battery am Abend ist meist normaler Tagesverbrauch; werte sie nur mit Zusatzsignalen als Problem.
-- Vermeide generische Warn- und Stoppsignal-Floskeln ohne konkreten Datenbezug.
-- Schreibe keine Aussagen wie "bei schweren Beinen locker" oder "bei ungewöhnlich hohem Puls Intensität reduzieren".
+Du bist Dimitris evidenzorientierter Gesundheitscoach nach Knie-OP.
+Priorisiere Schlaf, Erholung, Stress, HRV, Ruhepuls, Body Battery und Körpertrends.
+Während Reha: Schritte/Training nur Kontext, keine Ziele, Knieübungen oder Belastungssteigerung ohne medizinische Freigabe. Keine Diagnose oder Heilversprechen. Bei neuen/zunehmenden Schmerzen, Schwellung, Rötung/Überwärmung, Fieber, Atemnot oder Wadenschmerz medizinische Abklärung vor Routinetipps.
+Deutsch, nur Emoji-Bullets (•), je 1-2 kurze Sätze. Keine Einleitung, Rohdatenwiederholung oder generischen Warnfloskeln. Erkläre Signal → mögliche Bedeutung → Handlung; höchstens 1-2 Prioritäten. Schlaf als Xh Ymin. Werte relativ zur Abfragezeit; niedrige Body Battery abends allein ist kein Erholungsproblem. Fehlende Daten nicht als null interpretieren.
 """
 
 
@@ -68,10 +47,17 @@ class OpenAIHealthAssistant:
 
     async def _recent_coaching(self, report_type: str) -> str:
         try:
-            messages = await db.get_recent_coach_messages(self._data_dir, report_type, limit=3)
-            return "\n---\n".join(messages) if messages else "Keine früheren Coachingtexte verfügbar."
+            messages = await db.get_recent_coach_messages(self._data_dir, report_type, limit=2)
+            # Local excerpts for repetition avoidance; no LLM summarization.
+            snippets = []
+            for message in messages[:2]:
+                snippet = message[:360]
+                if len(message) > 360 and "\n" in snippet:
+                    snippet = snippet.rsplit("\n", 1)[0]
+                snippets.append(snippet)
+            return "\n---\n".join(snippets) if snippets else "keine"
         except Exception:
-            return "Keine früheren Coachingtexte verfügbar."
+            return "keine"
 
     async def _remember_coaching(self, report_type: str, snapshot: dict, content: str) -> None:
         try:
@@ -199,7 +185,7 @@ Keine reine Rohdatenliste, die Statistik kommt separat.
 
 Schritte, Gym und Cardio sind während der Knie-Reha ausschließlich Kontextdaten und keine Leistungsziele.
 """
-        return await self._chat(prompt, knowledge_query='Schlaf Erholung Ernährung Stress')
+        return await self._chat(prompt, knowledge_query='Schlaf Erholung Ernährung Stress', max_completion_tokens=650)
 
     async def generate_weight_insight(self, trend: dict) -> str:
         if not trend.get("available"):
@@ -287,13 +273,16 @@ Keine generischen Stoppsignale, schweren-Beine-Floskeln oder offensichtlichen Wa
         weight_trend: dict | None = None,
         hrv_trend: dict | None = None,
     ) -> str:
+        include_activities = bool(re.search(
+            r"train|aktiv|sport|lauf|cardio|beweg|schritt|gym|puls|hrv|erhol|zusammenhang|überblick", question.lower()
+        ))
         recent = "\n".join(
             f"- {a.get('start_time', '')[:10]} | {a.get('name', a.get('type', '?'))} | "
             f"{a.get('duration_minutes')} Min | {a.get('distance_km', 0)} km | "
             f"Ø HR: {a.get('avg_hr', '?')} bpm | Pace: {a.get('avg_pace_min_km', '?')} min/km | "
             f"SPM: {a.get('avg_spm', '?')} | +{a.get('elevation_gain_m', 0)} m"
-            for a in activities[:10]
-        ) or "Keine Aktivitäten verfügbar"
+            for a in (activities[:10] if include_activities else [])
+        ) or ("Keine Aktivitäten verfügbar" if include_activities else "Nicht relevant für diese Frage")
 
         wt = weight_trend or {}
         if wt.get("available"):
@@ -311,6 +300,9 @@ Körperalter: {wt.get('latest_metabolic_age')} Jahre
 Messungen: {wt.get('measurements_count')} in 30 Tagen · Letzte: {wt.get('latest_date')}"""
         else:
             weight_section = "\nRENPHO: Keine Daten verfügbar."
+
+        if not re.search(r"gewicht|körper|fett|muskel|bmi|renpho|ernähr|protein|eiweiß|wasser|stoffwechsel|gesund|zusammenhang|überblick", question.lower()):
+            weight_section = ""
 
         ht = hrv_trend or {}
         if ht.get("available"):
@@ -330,7 +322,7 @@ Letzte Werte: {hrv_samples}"""
 HRV-VERLAUF:
 Für die letzten {ht.get('period_days', 28)} Tage sind keine belastbaren HRV-Verlaufswerte verfügbar."""
         else:
-            hrv_section = "\nHRV-VERLAUF: Nicht abgefragt, außer die Frage zielt auf HRV-Entwicklung."
+            hrv_section = ""
 
         prompt = f"""
 Beantworte diese Frage von Dimitri basierend auf seinen aktuellen Gesundheits- und Trainingsdaten:
@@ -355,7 +347,7 @@ Bei Fragen zur HRV-Entwicklung: zuerst Verlauf/Trend beantworten, dann Tageswert
 Wenn kein HRV-Verlauf verfügbar ist, klar sagen, dass keine belastbare Entwicklung ableitbar ist.
 Zeitabhängige Werte wie Body Battery relativ zur Abfragezeit interpretieren.
 """
-        return await self._chat(prompt, knowledge_query=question)
+        return await self._chat(prompt, knowledge_query=question, max_completion_tokens=750)
 
     async def generate_training_tip(self, snapshot: dict, recent_activities: list) -> str:
         recent_types = [a.get("type") for a in recent_activities[:5]]
@@ -380,7 +372,10 @@ Format: 3-4 Bullets — 1 Erholungs-Status, dann 2-3 spezifische, sichere Gesund
     def knowledge_status(self) -> dict:
         return self._knowledge.status()
 
-    async def _chat(self, user_message: str, knowledge_query: str | None = None) -> str:
+    async def _chat(
+        self, user_message: str, knowledge_query: str | None = None,
+        max_completion_tokens: int = 450,
+    ) -> str:
         try:
             # Book excerpts are user-level reference data, below the coaching
             # policy. They never become system instructions.
@@ -394,7 +389,7 @@ Format: 3-4 Bullets — 1 Erholungs-Status, dann 2-3 spezifische, sichere Gesund
                     {"role": "user", "content": sources},
                     {"role": "user", "content": user_message},
                 ],
-                max_completion_tokens=900,
+                max_completion_tokens=max_completion_tokens,
                 **options,
             )
             choice = response.choices[0]
@@ -403,12 +398,14 @@ Format: 3-4 Bullets — 1 Erholungs-Status, dann 2-3 spezifische, sichere Gesund
             usage = getattr(response, "usage", None)
             if usage:
                 completion_details = getattr(usage, "completion_tokens_details", None)
+                prompt_details = getattr(usage, "prompt_tokens_details", None)
                 logger.info(
-                    "OpenAI usage: model=%s input_tokens=%s output_tokens=%s reasoning_tokens=%s total_tokens=%s",
+                    "OpenAI usage: model=%s input_tokens=%s output_tokens=%s reasoning_tokens=%s cached_input_tokens=%s total_tokens=%s",
                     self._model,
                     getattr(usage, "prompt_tokens", None),
                     getattr(usage, "completion_tokens", None),
                     getattr(completion_details, "reasoning_tokens", None),
+                    getattr(prompt_details, "cached_tokens", None),
                     getattr(usage, "total_tokens", None),
                 )
             if refusal:

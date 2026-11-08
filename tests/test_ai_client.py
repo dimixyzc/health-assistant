@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import unittest
 import tempfile
@@ -55,7 +56,7 @@ class OpenAIClientTest(unittest.TestCase):
                     self.assertIn("Behandlungs-/Reha-Plan", messages[0]["content"])
                     self.assertIn("keine Supplement-Stacks", messages[0]["content"])
                     self.assertEqual(messages[1]["role"], "user")
-                    self.assertIn('"book_available": true', messages[1]["content"])
+                    self.assertTrue(json.loads(messages[1]["content"].split("\n", 1)[1])["book_available"])
                     self.assertIn("Protocol", messages[1]["content"])
 
     def test_free_question_retrieves_question_not_boilerplate_sensor_context(self):
@@ -70,6 +71,38 @@ class OpenAIClientTest(unittest.TestCase):
             assistant, _ = self._assistant(tmp, finish_reason="length")
             self.assertEqual(asyncio.run(assistant._chat("question")), "")
 
+    def test_history_is_bounded_without_another_model_call(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            assistant, completions = self._assistant(tmp)
+            with patch("ai.openai_client.db.get_recent_coach_messages", AsyncMock(return_value=["previous advice " * 500] * 3)) as history:
+                result = asyncio.run(assistant._recent_coaching("morning"))
+            self.assertLessEqual(len(result), 725)
+            self.assertEqual(history.call_args.kwargs["limit"], 2)
+            self.assertIsNone(completions.kwargs)
+
+    def test_narrow_sleep_question_does_not_send_unrelated_weight_or_workouts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            assistant, completions = self._assistant(tmp)
+            question = "Ich habe neue Schmerzen. Wie kann ich besser schlafen?"
+            asyncio.run(assistant.answer_free_question(
+                question, {}, [{"name": "private workout label"}],
+                {"available": True, "latest_weight": 123.456},
+            ))
+            prompt = completions.kwargs["messages"][-1]["content"]
+            self.assertIn(question, prompt)  # Never trim the actual question/symptoms.
+            self.assertNotIn("123.456", prompt)
+            self.assertNotIn("private workout label", prompt)
+            self.assertEqual(completions.kwargs["max_completion_tokens"], 750)
+
+    def test_weight_question_keeps_relevant_body_data(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            assistant, completions = self._assistant(tmp)
+            asyncio.run(assistant.answer_free_question(
+                "Wie verändert sich mein Gewicht?", {}, [],
+                {"available": True, "latest_weight": 123.456},
+            ))
+            self.assertIn("123.456", completions.kwargs["messages"][-1]["content"])
+
     def test_chat_caps_output_and_logs_usage_without_content(self):
         response = SimpleNamespace(
             choices=[
@@ -83,6 +116,7 @@ class OpenAIClientTest(unittest.TestCase):
                 completion_tokens=45,
                 total_tokens=168,
                 completion_tokens_details=SimpleNamespace(reasoning_tokens=7),
+                prompt_tokens_details=SimpleNamespace(cached_tokens=88),
             ),
         )
         completions = _FakeCompletions(response)
@@ -94,10 +128,11 @@ class OpenAIClientTest(unittest.TestCase):
             result = asyncio.run(assistant._chat("prompt"))
 
         self.assertEqual(result, "private health analysis")
-        self.assertEqual(completions.kwargs["max_completion_tokens"], 900)
+        self.assertEqual(completions.kwargs["max_completion_tokens"], 450)
         self.assertEqual(completions.kwargs["reasoning_effort"], "none")
         joined_logs = "\n".join(logs.output)
         self.assertIn("input_tokens=123", joined_logs)
         self.assertIn("output_tokens=45", joined_logs)
         self.assertIn("reasoning_tokens=7", joined_logs)
+        self.assertIn("cached_input_tokens=88", joined_logs)
         self.assertNotIn("private health analysis", joined_logs)

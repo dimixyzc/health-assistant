@@ -5,7 +5,7 @@ import zipfile
 from pathlib import Path
 
 from knowledge import KnowledgeBase
-from knowledge.library import BOOK_NAME, MAX_CONTEXT_CHARS, read_epub
+from knowledge.library import BOOK_NAME, MAX_CONTEXT_CHARS, MAX_EXCERPT_CHARS, _excerpt, read_epub
 
 
 def make_epub(path, sleep_text="Regular sleep schedule supports sleep."):
@@ -79,6 +79,17 @@ class KnowledgeTest(unittest.TestCase):
             self.assertFalse(parsed["live_search"])
             self.assertTrue(parsed["book_available"])
             self.assertIn("NIH ODS Supplements", str(parsed["general_references"]))
+            self.assertLessEqual(len(parsed["passages"]), 2)
+            for passage in parsed["passages"]:
+                self.assertLessEqual(len(passage["text"]), MAX_EXCERPT_CHARS)
+                self.assertTrue(passage["excerpt"])
+
+    def test_excerpt_keeps_neighboring_condition_and_whole_sentences(self):
+        text = "Other context. " * 80 + "Do not use this during recovery. Caffeine changes sleep. Discuss it with your clinician."
+        result = _excerpt(text, "caffeine sleep")
+        self.assertIn("Do not use this during recovery.", result)
+        self.assertIn("Discuss it with your clinician.", result)
+        self.assertLessEqual(len(result), MAX_EXCERPT_CHARS)
 
     def test_reference_text_stays_data(self):
         with tempfile.TemporaryDirectory() as tmp:

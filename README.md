@@ -2,12 +2,38 @@
 
 Persönlicher Gesundheitsassistent für Garmin, Renpho & Google Fit.
 
+## Tokenarmer Betrieb ab 1.1.1
+
+- Quellenkontext: höchstens zwei lokal ausgewählte Auszüge mit je maximal
+  850 Zeichen; gesamter Quellen-JSON-Kontext höchstens 3.200 Zeichen
+  (vorher 9.000). Kapitelreferenzen bleiben erhalten.
+- Frühere Coachingtexte: zwei lokale Auszüge mit insgesamt höchstens
+  725 Zeichen statt mehrerer vollständiger Nachrichten. Keine zusätzliche
+  KI-Anfrage für Zusammenfassungen oder Buchsuche.
+- Kürzere gemeinsame Regeln; bei gezielten freien Fragen nur relevante
+  Körper-/Aktivitätsdaten. Fragen und darin genannte Beschwerden werden
+  nicht abgeschnitten.
+- Ausgabegrenzen: 450 Tokens für Routine-Coaching, 650 für Wochenreviews,
+  750 für freie Fragen. GPT-6 Luna läuft weiterhin ohne Reasoning-Tokens.
+- Logs zeigen tatsächliche Eingabe-, Ausgabe-, Reasoning- und gecachte
+  Eingabetokens, ohne Gesundheits- oder Buchtexte zu protokollieren.
+- Der JSON-Bericht lässt leere Werte und doppelte Langzeitwerte weg;
+  echte Nullwerte und `false` bleiben erhalten.
+
+Ein lokaler Vergleich von sieben synthetischen Anfragen mit identischen
+Daten und derselben Buchquelle ergab gegenüber 1.1.0 etwa **53–64 % weniger
+Eingabetokens** (Schätzung mit `o200k_base`, ohne Nachrichten-Overhead).
+Das ist keine Messung der API-Abrechnung. Tatsächlicher Verbrauch und mögliche
+Cache-Treffer hängen von der Anfrage ab; die API-Nutzungslogs sind maßgeblich.
+Reha-, Medikamenten- und Quellenregeln bleiben erhalten. Es werden keine
+Gesundheitsantworten wiederverwendet, die auf veralteten Messwerten beruhen.
+
 ## Neu in 1.1.0: Huberman als persönliche Wissensquelle
 
 Der Coach berücksichtigt Andrew Hubermans *Protocols: An Operating Manual for
 the Human Body* bei Morgen-/Abendbriefings, Wochenreviews, Körperdaten,
 Gesundheitsfokus, Tipps und freien Fragen. Er sucht lokal passende Kapitel und
-Protokolle und übergibt bis zu vier kurze Auszüge an GPT-6 Luna. Deutsche
+Protokolle und übergibt bis zu zwei kurze Auszüge an GPT-6 Luna. Deutsche
 Suchbegriffe werden um englische Themenbegriffe ergänzt. Der tägliche
 `health_report.py` enthält ebenfalls Buchkontext und Coaching-Regeln.
 
@@ -27,7 +53,7 @@ Trainingsziele oder Supplement-Dosierungspläne aus dem Buch.
 1. Deine EPUB-Datei einmalig als
    `/share/health-assistant/huberman_protocols.epub` auf dem Home-Assistant-Gerät
    ablegen (Ordner gegebenenfalls erstellen, z.B. über die Samba-Freigabe).
-2. Add-on-Repository aktualisieren, **Dimi Health Assistant 1.1.0** installieren
+2. Add-on-Repository aktualisieren, **Dimi Health Assistant 1.1.1** installieren
    und starten. Das Buch wird lokal eingelesen; der Index liegt persistent unter
    `/data/knowledge/`. Auch eine später abgelegte Datei wird erkannt.
 3. Mit `/wissen` prüfen, ob das Buch geladen wurde und welches Modell läuft.
@@ -98,7 +124,7 @@ Aktivitätsliste verwendet:
 ### Home-Assistant-Add-on
 
 Das Add-on liegt im Ordner `dimi_health_assistant/`. Nach dem Aktualisieren
-des Add-on-Repositories in Home Assistant die Version 1.1.0 installieren oder
+des Add-on-Repositories in Home Assistant die Version 1.1.1 installieren oder
 aktualisieren und in der Konfiguration mindestens `openai_api_key` und
 `openai_model: gpt-6-luna` setzen.
 

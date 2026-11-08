@@ -1,4 +1,4 @@
-# Dimi Health Assistant 1.1.0
+# Dimi Health Assistant 1.1.1
 
 ## Einrichtung
 
@@ -36,3 +36,13 @@ nicht aus dem Buch übernommen. Quellenmaterial wird als Referenztext behandelt,
 nicht als Anweisung an den Assistenten.
 
 `/hilfe` zeigt alle Befehle, `/wissen` den Quellenstatus.
+
+## Tokenverbrauch
+
+Pro Anfrage werden höchstens zwei kurze Buchauszüge ausgewählt; der gesamte
+Quellenkontext ist auf 3.200 Zeichen begrenzt. Die Historie umfasst maximal
+725 Zeichen. Routineantworten sind auf 450 Ausgabetokens, Wochenreviews auf 650
+und freie Fragen auf 750 begrenzt. Es gibt keine zusätzlichen Modellaufrufe
+für Buchsuche oder Zusammenfassungen. API-Nutzungslogs zeigen Eingabe-, Ausgabe-,
+Reasoning- und gecachte Eingabetokens. Gesundheitsantworten werden nicht aus
+einem veralteten Antwortcache übernommen.

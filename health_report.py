@@ -21,6 +21,16 @@ from storage import database as db
 LOCAL_TZ = ZoneInfo("Europe/Berlin")
 
 
+def _compact(value):
+    """Omit missing fields; preserve measured zero and explicit false values."""
+    if isinstance(value, dict):
+        result = {key: _compact(item) for key, item in value.items()}
+        return {key: item for key, item in result.items() if item is not None and item != "" and item != {} and item != []}
+    if isinstance(value, list):
+        return [_compact(item) for item in value]
+    return value
+
+
 def _week_context(weekly: dict) -> dict:
     """Keep the payload compact while preserving the relevant trend signals."""
     keys = (
@@ -101,7 +111,10 @@ async def build_report(report_type: str) -> dict:
         )
     if renpho_error:
         report["renpho_fetch_error"] = renpho_error
-    return report
+    # Long-term values already occur in week_context; keep changes in the
+    # daily snapshot and avoid serializing the same values twice.
+    report["daily_snapshot"] = {key: value for key, value in snapshot.items() if key != "long_term_metrics"}
+    return _compact(report)
 
 
 def main() -> None:
@@ -119,6 +132,7 @@ def main() -> None:
             asyncio.run(build_report(args.report)),
             ensure_ascii=False,
             indent=2 if args.pretty else None,
+            separators=None if args.pretty else (",", ":"),
             default=str,
         )
     )

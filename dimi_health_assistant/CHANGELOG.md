@@ -1,3 +1,16 @@
+# 1.1.1
+
+- Tokenarmer Quellenkontext: zwei Auszüge mit je höchstens 850 Zeichen,
+  insgesamt maximal 3.200 Zeichen inklusive ergänzender Quellen.
+- Kürzere gemeinsame Coaching-Regeln und auf 725 Zeichen begrenzte Historie.
+- Bei gezielten Fragen keine fachfremden Körper- und Aktivitätsdaten senden.
+- Ausgabelimits nach Aufgabe: 450/650/750 Tokens; GPT-6 Luna ohne Reasoning.
+- Tatsächliche gecachte Eingabetokens zusätzlich in den Nutzungslogs.
+- JSON-Berichte ohne leere Felder und doppelte Langzeitwerte.
+- Lokaler Vergleich mit sieben synthetischen Anfragen: geschätzt 53–64 % weniger
+  Eingabetokens als 1.1.0 (o200k_base, ohne Nachrichten-Overhead; keine Live-API-Messung).
+- Reha-, Medikamenten- und Quellenregeln bleiben erhalten.
+
 # 1.1.0
 
 - GPT-6 Luna als Standardmodell für alle Coaching-Antworten; bisherige
