@@ -1,7 +1,7 @@
 name: "Dimi Health Assistant"
-version: "1.0.33"
+version: "1.1.0"
 slug: "dimi_health_assistant"
-description: "Persönlicher Fitness-Bot: Garmin + Renpho + Google Fit + OpenAI"
+description: "Gesundheitscoach mit Huberman-Buchwissen, Garmin, Renpho und GPT-6 Luna"
 url: "https://github.com/dimixyzc/health-assistant"
 startup: application
 init: false
@@ -20,7 +20,8 @@ options:
   google_client_id: ""
   google_client_secret: ""
   openai_api_key: ""
-  openai_model: "gpt-5.6-terra"
+  openai_model: "gpt-6-luna"
+  knowledge_book_path: ""
   renpho_reminder_days: 5
   sleep_goal_minutes: 480
   weekly_gym_goal: 3
@@ -37,6 +38,7 @@ schema:
   google_client_secret: str
   openai_api_key: password?
   openai_model: str?
+  knowledge_book_path: str?
   renpho_reminder_days: int?
   sleep_goal_minutes: int?
   weekly_gym_goal: int?

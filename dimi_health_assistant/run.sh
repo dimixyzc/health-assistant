@@ -12,6 +12,7 @@ export GOOGLE_CLIENT_ID
 export GOOGLE_CLIENT_SECRET
 export OPENAI_API_KEY
 export OPENAI_MODEL
+export KNOWLEDGE_BOOK_PATH
 export RENPHO_REMINDER_DAYS
 export SLEEP_GOAL_MINUTES
 export WEEKLY_GYM_GOAL
@@ -28,7 +29,16 @@ RENPHO_PASSWORD="$(bashio::config 'renpho_password')"
 GOOGLE_CLIENT_ID="$(bashio::config 'google_client_id')"
 GOOGLE_CLIENT_SECRET="$(bashio::config 'google_client_secret')"
 OPENAI_API_KEY="$(bashio::config 'openai_api_key')"
-OPENAI_MODEL="$(bashio::config 'openai_model' 'gpt-5.6-terra')"
+OPENAI_MODEL="$(bashio::config 'openai_model' 'gpt-6-luna')"
+# Upgrade previous bundled defaults as well as fresh installations. Home
+# Assistant retains saved add-on options when the manifest default changes.
+case "${OPENAI_MODEL}" in
+    ""|gpt-4o|gpt-5.5|gpt-5.6-terra)
+        OPENAI_MODEL="gpt-6-luna"
+        bashio::log.info "Migrated previous model default to gpt-6-luna"
+        ;;
+esac
+KNOWLEDGE_BOOK_PATH="$(bashio::config 'knowledge_book_path' '')"
 RENPHO_REMINDER_DAYS="$(bashio::config 'renpho_reminder_days' '5')"
 SLEEP_GOAL_MINUTES="$(bashio::config 'sleep_goal_minutes' '480')"
 WEEKLY_GYM_GOAL="$(bashio::config 'weekly_gym_goal' '3')"
@@ -36,7 +46,7 @@ WEEKLY_CARDIO_GOAL="$(bashio::config 'weekly_cardio_goal' '3')"
 TZ="$(bashio::config 'timezone' 'Europe/Berlin')"
 DATA_DIR="/data"
 
-bashio::log.info "Starting Dimi Health Assistant v1.0.33"
+bashio::log.info "Starting Dimi Health Assistant v1.1.0"
 bashio::log.info "TZ: ${TZ} | Renpho reminder nach: ${RENPHO_REMINDER_DAYS} Tagen | Schlafziel: ${SLEEP_GOAL_MINUTES} min | Cardio-Ziel: ${WEEKLY_CARDIO_GOAL}"
 
 # Google Fit Token aus /share nur übernehmen, wenn /data keinen neueren Token hat.

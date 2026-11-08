@@ -2,6 +2,62 @@
 
 Persönlicher Gesundheitsassistent für Garmin, Renpho & Google Fit.
 
+## Neu in 1.1.0: Huberman als persönliche Wissensquelle
+
+Der Coach berücksichtigt Andrew Hubermans *Protocols: An Operating Manual for
+the Human Body* bei Morgen-/Abendbriefings, Wochenreviews, Körperdaten,
+Gesundheitsfokus, Tipps und freien Fragen. Er sucht lokal passende Kapitel und
+Protokolle und übergibt bis zu vier kurze Auszüge an GPT-6 Luna. Deutsche
+Suchbegriffe werden um englische Themenbegriffe ergänzt. Der tägliche
+`health_report.py` enthält ebenfalls Buchkontext und Coaching-Regeln.
+
+Die Buchquelle ergänzt persönliche Messdaten, allgemeines Gesundheitswissen und
+hinterlegte, am 08.11.2026 geprüfte Hinweise von
+[CDC zum Schlaf](https://www.cdc.gov/sleep/about/),
+[WHO zur Ernährung](https://www.who.int/news-room/fact-sheets/detail/healthy-diet) und
+[NIH zu Nahrungsergänzung](https://ods.od.nih.gov/factsheets/WYNTK-Consumer/).
+Es gibt keine Live-Literatursuche. Buchprotokolle sind keine medizinischen
+Leitlinien; individuelle Behandlung und Reha haben Vorrang. Empfehlungen sollen
+passende Buchprotokolle benennen, Unsicherheit deutlich machen und höchstens
+1–2 alltagstaugliche Prioritäten setzen. Der Coach übernimmt keine
+Trainingsziele oder Supplement-Dosierungspläne aus dem Buch.
+
+### Buch in Home Assistant hinterlegen
+
+1. Deine EPUB-Datei einmalig als
+   `/share/health-assistant/huberman_protocols.epub` auf dem Home-Assistant-Gerät
+   ablegen (Ordner gegebenenfalls erstellen, z.B. über die Samba-Freigabe).
+2. Add-on-Repository aktualisieren, **Dimi Health Assistant 1.1.0** installieren
+   und starten. Das Buch wird lokal eingelesen; der Index liegt persistent unter
+   `/data/knowledge/`. Auch eine später abgelegte Datei wird erkannt.
+3. Mit `/wissen` prüfen, ob das Buch geladen wurde und welches Modell läuft.
+
+Alternativ `knowledge_book_path` auf einen anderen im Add-on erreichbaren
+EPUB-Pfad setzen. Ohne diese Option wird zuerst
+`/data/knowledge/huberman_protocols.epub`, danach der obige `/share`-Pfad geprüft.
+Fehlt die Datei oder ist sie ungültig, bleibt der Coach ohne Buchstellen nutzbar
+und behauptet keinen Buchzugriff. Bei expliziten Buchfragen benennt er die Lücke.
+
+**Wichtig beim Update:** Home Assistant behält gespeicherte Optionen bei.
+Die früheren Standardmodelle `gpt-4o`, `gpt-5.5` und `gpt-5.6-terra` werden beim
+Start auf `gpt-6-luna` umgestellt. Andere ausdrücklich konfigurierte Modelle
+bleiben erhalten. Für eine eindeutige Anzeige in der Add-on-Konfiguration
+`openai_model: gpt-6-luna` speichern. Dein API-Key muss Zugriff auf dieses Modell
+haben; es gibt keinen stillen Wechsel auf ein anderes Modell.
+
+### Buch lokal oder für Docker importieren
+
+```bash
+./.venv/bin/python -m knowledge.import_epub "/pfad/zum/buch.epub" --data-dir ./data
+```
+
+Der Import speichert eine private Kopie und einen lokalen Suchindex. Der
+bestehende Docker-Compose-Datenmount stellt sie unter `/data/knowledge` bereit.
+Für lokale Aufrufe `DATA_DIR=./data` setzen oder `KNOWLEDGE_BOOK_PATH` auf die
+importierte EPUB setzen. Der Import benötigt weder API-Key noch Cloud-Upload.
+Nur die ausgewählten Auszüge werden zusammen mit dem Coaching-Kontext an
+OpenAI übertragen. EPUB und Index bleiben aus Git und Docker-Images ausgeschlossen.
+
 ## Knie-Reha-Modus
 
 Der Assistent ist standardmäßig auf die Zeit nach einer Knie-Operation eingestellt.
@@ -42,9 +98,9 @@ Aktivitätsliste verwendet:
 ### Home-Assistant-Add-on
 
 Das Add-on liegt im Ordner `dimi_health_assistant/`. Nach dem Aktualisieren
-des Add-on-Repositories in Home Assistant die Version 1.0.33 installieren oder
+des Add-on-Repositories in Home Assistant die Version 1.1.0 installieren oder
 aktualisieren und in der Konfiguration mindestens `openai_api_key` und
-`openai_model: gpt-5.6-terra` setzen.
+`openai_model: gpt-6-luna` setzen.
 
 ## Setup
 
@@ -119,6 +175,7 @@ Falls MFA aktiv ist, muss `prompt_mfa` in `connectors/garmin.py` angepasst werde
 | `/experimente` | Aktive Experimente anzeigen |
 | `/tipps` | Personalisierter Gesundheitstipp |
 | `/status` | Schnellübersicht |
+| `/wissen` | Status der Buchquelle und des verwendeten Modells |
 
 Experiment-Beispiel:
 
@@ -132,7 +189,7 @@ Experiment-Beispiel:
 |------|--------|
 | 07:30 Mo-Fr, 08:30 Sa-So | Morgen-Briefing (Schlaf, HRV, Empfehlung) |
 | 20:30 täglich | Abend-Zusammenfassung (Schritte, Workouts) |
-| Sonntag 18:00 | Wochen-Review mit GPT-4o |
+| Sonntag 18:00 | Wochen-Review mit GPT-6 Luna |
 | 07:30 (konditional) | Renpho-Erinnerung wenn >5 Tage keine Messung |
 
 ## Datenquellen & Deduplication
@@ -166,7 +223,8 @@ Diese Werte steuern `/plan`, `/heute`, `/training`, `/woche`, `/gewicht` und `/s
 health-assistant/
 ├── connectors/      # Garmin, Renpho, Google Fit API-Wrapper
 ├── analytics/       # Insights, Deduplication, Text-Formatter
-├── ai/              # OpenAI GPT-4o Client
+├── ai/              # OpenAI GPT-6 Luna Client
+├── knowledge/       # Lokale EPUB-Suche, Quellen und Coaching-Regeln
 ├── bot/             # aiogram Handlers + APScheduler
 ├── storage/         # SQLite Datenbank
 └── data/            # Persistente Daten (gitignored)

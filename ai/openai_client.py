@@ -2,6 +2,8 @@ import logging
 from typing import Optional
 
 from openai import AsyncOpenAI
+from knowledge import KnowledgeBase
+from knowledge.library import EVIDENCE_POLICY
 from storage import database as db
 
 logger = logging.getLogger(__name__)
@@ -52,12 +54,17 @@ class OpenAIHealthAssistant:
     def __init__(
         self,
         api_key: str,
-        model: str = "gpt-5.5",
+        model: str = "gpt-6-luna",
         data_dir: str = "/data",
+        knowledge_book_path: str = "",
     ):
         self._client = AsyncOpenAI(api_key=api_key)
         self._model = model
         self._data_dir = data_dir
+        self._knowledge = KnowledgeBase(data_dir, knowledge_book_path)
+        status = self._knowledge.status()
+        logger.info("Coaching model=%s book_available=%s book_sections=%s",
+                    model, status["available"], status["sections"])
 
     async def _recent_coaching(self, report_type: str) -> str:
         try:
@@ -101,7 +108,7 @@ Wiederhole keine Empfehlung aus den letzten Coachingtexten, außer das zugrunde 
 LETZTE COACHINGTEXTE:
 {previous}
 """
-        result = await self._chat(prompt)
+        result = await self._chat(prompt, knowledge_query="Schlaf Erholung Tageslicht Stress")
         await self._remember_coaching("morning", snapshot, result)
         return result
 
@@ -138,7 +145,7 @@ MORGENKONTEXT:
 LETZTE ABENDTEXTE:
 {previous}
 """
-        result = await self._chat(prompt)
+        result = await self._chat(prompt, knowledge_query="Schlaf Abendroutine Stress")
         await self._remember_coaching("evening", snapshot, result)
         return result
 
@@ -192,7 +199,7 @@ Keine reine Rohdatenliste, die Statistik kommt separat.
 
 Schritte, Gym und Cardio sind während der Knie-Reha ausschließlich Kontextdaten und keine Leistungsziele.
 """
-        return await self._chat(prompt)
+        return await self._chat(prompt, knowledge_query='Schlaf Erholung Ernährung Stress')
 
     async def generate_weight_insight(self, trend: dict) -> str:
         if not trend.get("available"):
@@ -232,7 +239,7 @@ Format: 4-5 Bullets:
 Jeder Bullet maximal 24 Wörter.
 Keine reine Rohdatenliste.
 """
-        return await self._chat(prompt)
+        return await self._chat(prompt, knowledge_query='Ernährung Protein Gewicht Körperfett')
 
     async def generate_plan_explanation(self, plan: dict) -> str:
         snapshot = plan.get("snapshot") or {}
@@ -270,7 +277,7 @@ Format: 4 Bullets:
 Jeder Bullet maximal 22 Wörter.
 Keine generischen Stoppsignale, schweren-Beine-Floskeln oder offensichtlichen Warnhinweise.
 """
-        return await self._chat(prompt)
+        return await self._chat(prompt, knowledge_query='Schlaf Erholung Stress')
 
     async def answer_free_question(
         self,
@@ -348,7 +355,7 @@ Bei Fragen zur HRV-Entwicklung: zuerst Verlauf/Trend beantworten, dann Tageswert
 Wenn kein HRV-Verlauf verfügbar ist, klar sagen, dass keine belastbare Entwicklung ableitbar ist.
 Zeitabhängige Werte wie Body Battery relativ zur Abfragezeit interpretieren.
 """
-        return await self._chat(prompt)
+        return await self._chat(prompt, knowledge_query=question)
 
     async def generate_training_tip(self, snapshot: dict, recent_activities: list) -> str:
         recent_types = [a.get("type") for a in recent_activities[:5]]
@@ -368,17 +375,27 @@ Letzte 5 Aktivitäten: {', '.join(str(t) for t in recent_types)}
 Bewegungsdaten sind nur Kontext, kein Ziel. Keine Belastungs-, Trainings- oder Übungsanweisung.
 Format: 3-4 Bullets — 1 Erholungs-Status, dann 2-3 spezifische, sichere Gesundheitstipps.
 """
-        return await self._chat(prompt)
+        return await self._chat(prompt, knowledge_query='Schlaf Erholung Stress')
 
-    async def _chat(self, user_message: str) -> str:
+    def knowledge_status(self) -> dict:
+        return self._knowledge.status()
+
+    async def _chat(self, user_message: str, knowledge_query: str | None = None) -> str:
         try:
+            # Book excerpts are user-level reference data, below the coaching
+            # policy. They never become system instructions.
+            knowledge = getattr(self, "_knowledge", None)
+            sources = knowledge.prompt_context(knowledge_query or user_message) if knowledge else "Buchquelle nicht verfügbar."
+            options = {"reasoning_effort": "none"} if self._model == "gpt-6-luna" else {}
             response = await self._client.chat.completions.create(
                 model=self._model,
                 messages=[
-                    {"role": "system", "content": _ATHLETE_PROFILE},
+                    {"role": "system", "content": _ATHLETE_PROFILE + EVIDENCE_POLICY},
+                    {"role": "user", "content": sources},
                     {"role": "user", "content": user_message},
                 ],
-                max_completion_tokens=500,
+                max_completion_tokens=900,
+                **options,
             )
             choice = response.choices[0]
             content = choice.message.content
@@ -396,6 +413,9 @@ Format: 3-4 Bullets — 1 Erholungs-Status, dann 2-3 spezifische, sichere Gesund
                 )
             if refusal:
                 logger.warning(f"OpenAI refusal: {refusal}")
+                return ""
+            if choice.finish_reason == "length":
+                logger.warning("OpenAI output truncated; using existing report fallback")
                 return ""
             if not content:
                 logger.warning(f"OpenAI returned empty content (finish_reason={choice.finish_reason})")

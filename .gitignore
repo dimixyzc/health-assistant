@@ -10,3 +10,8 @@ google_fit_token.json
 logs/
 .venv/
 venv/
+
+# Personal reference books and generated knowledge indexes
+*.epub
+**/huberman_index.json
+private/

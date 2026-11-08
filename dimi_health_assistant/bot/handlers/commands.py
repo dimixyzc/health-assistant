@@ -75,9 +75,28 @@ async def cmd_start(message: Message) -> None:
         "/experiment_start — 14-Tage-Experiment starten\n"
         "/experimente — Aktive Experimente\n"
         "/tipps — Personalisierter Gesundheitstipp\n"
-        "/status — Schnellübersicht"
+        "/status — Schnellübersicht\n"
+        "/wissen — Buchquelle und Modell"
     )
     await message.answer(text, parse_mode=ParseMode.HTML)
+
+
+@router.message(Command("wissen"))
+async def cmd_wissen(message: Message) -> None:
+    if not _authorized(message):
+        return
+    status = get_ai().knowledge_status()
+    book = (
+        f"📚 {status['title']} · {status['sections']} Abschnitte geladen."
+        if status["available"] else
+        "📚 Buch nicht geladen. EPUB unter /share/health-assistant/huberman_protocols.epub ablegen."
+    )
+    await message.answer(
+        f"{book}\n🤖 Modell: {settings.openai_model}\n"
+        "🔎 Passende Buchstellen plus CDC-/WHO-/NIH-Hinweise; keine Live-Literatursuche. "
+        "Dein Behandlungsplan hat Vorrang.",
+        parse_mode=None,
+    )
 
 
 @router.message(Command("heute"))

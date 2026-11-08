@@ -27,7 +27,9 @@ class Settings(BaseSettings):
     # Optional: only required by the legacy Telegram coaching client.  A
     # scheduled Codex task supplies the coaching response directly.
     openai_api_key: str = ""
-    openai_model: str = "gpt-5.5"
+    openai_model: str = "gpt-6-luna"
+
+    knowledge_book_path: str = ""
 
     renpho_reminder_days: int = 5
     sleep_goal_minutes: int = 480

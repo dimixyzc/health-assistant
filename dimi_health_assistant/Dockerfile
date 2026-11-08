@@ -14,6 +14,7 @@ COPY main.py config.py ./
 COPY connectors/ connectors/
 COPY analytics/ analytics/
 COPY ai/ ai/
+COPY knowledge/ knowledge/
 COPY bot/ bot/
 COPY storage/ storage/
 

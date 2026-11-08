@@ -13,6 +13,8 @@ from zoneinfo import ZoneInfo
 
 from analytics import insights
 from config import settings
+from knowledge import KnowledgeBase
+from knowledge.library import EVIDENCE_POLICY
 from storage import database as db
 
 
@@ -72,6 +74,10 @@ async def build_report(report_type: str) -> dict:
 
     report = {
         "report_type": report_type,
+        "coaching_policy": EVIDENCE_POLICY,
+        "knowledge_context": KnowledgeBase(settings.data_dir, settings.knowledge_book_path).context(
+            "Schlaf Erholung Stress Ernährung" if report_type == "morning" else "Schlaf Abendroutine Stress"
+        ),
         "generated_at": datetime.now(LOCAL_TZ).isoformat(timespec="minutes"),
         "timezone": "Europe/Berlin",
         "daily_snapshot": snapshot,

@@ -23,7 +23,9 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
 
     openai_api_key: str = ""
-    openai_model: str = "gpt-5.6-terra"
+    openai_model: str = "gpt-6-luna"
+
+    knowledge_book_path: str = ""
 
     renpho_reminder_days: int = 5
     sleep_goal_minutes: int = 480
