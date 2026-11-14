@@ -103,6 +103,26 @@ class OpenAIClientTest(unittest.TestCase):
             ))
             self.assertIn("123.456", completions.kwargs["messages"][-1]["content"])
 
+    def test_retries_intermittent_model_access_denial(self):
+        import httpx
+        from openai import PermissionDeniedError
+
+        request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+        response = httpx.Response(403, request=request)
+        error = PermissionDeniedError("unavailable", response=response, body={"code": "model_not_found"})
+        result = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="OK", refusal=None), finish_reason="stop")],
+            usage=None,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            assistant, _ = self._assistant(tmp)
+            create = AsyncMock(side_effect=[error, error, result])
+            assistant._client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+            with patch("ai.openai_client.asyncio.sleep", new_callable=AsyncMock) as sleep:
+                self.assertEqual(asyncio.run(assistant._chat("test")), "OK")
+            self.assertEqual(create.await_count, 3)
+            self.assertEqual(sleep.await_count, 2)
+
     def test_chat_caps_output_and_logs_usage_without_content(self):
         response = SimpleNamespace(
             choices=[

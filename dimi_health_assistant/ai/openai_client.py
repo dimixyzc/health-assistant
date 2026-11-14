@@ -1,8 +1,9 @@
+import asyncio
 import logging
 import re
 from typing import Optional
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, PermissionDeniedError
 from knowledge import KnowledgeBase
 from knowledge.library import EVIDENCE_POLICY
 from storage import database as db
@@ -382,16 +383,27 @@ Format: 3-4 Bullets — 1 Erholungs-Status, dann 2-3 spezifische, sichere Gesund
             knowledge = getattr(self, "_knowledge", None)
             sources = knowledge.prompt_context(knowledge_query or user_message) if knowledge else "Buchquelle nicht verfügbar."
             options = {"reasoning_effort": "none"} if self._model == "gpt-6-luna" else {}
-            response = await self._client.chat.completions.create(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": _ATHLETE_PROFILE + EVIDENCE_POLICY},
-                    {"role": "user", "content": sources},
-                    {"role": "user", "content": user_message},
-                ],
-                max_completion_tokens=max_completion_tokens,
-                **options,
-            )
+            # A newly allowed model can intermittently return model_not_found
+            # while project permissions propagate between API servers.
+            for attempt in range(12):
+                try:
+                    response = await self._client.chat.completions.create(
+                        model=self._model,
+                        messages=[
+                            {"role": "system", "content": _ATHLETE_PROFILE + EVIDENCE_POLICY},
+                            {"role": "user", "content": sources},
+                            {"role": "user", "content": user_message},
+                        ],
+                        max_completion_tokens=max_completion_tokens,
+                        **options,
+                    )
+                    break
+                except PermissionDeniedError as exc:
+                    if self._model != "gpt-6-luna" or exc.code != "model_not_found" or attempt == 11:
+                        raise
+                    logger.warning("OpenAI model access temporarily unavailable; retry %s/11", attempt + 1)
+                    await asyncio.sleep(2)
+
             choice = response.choices[0]
             content = choice.message.content
             refusal = getattr(choice.message, "refusal", None)

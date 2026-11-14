@@ -1,3 +1,7 @@
+# 1.1.4
+
+- Kurzzeitige GPT-6-Luna-Freigabefehler werden begrenzt erneut versucht.
+
 # 1.1.3
 
 - Garmin-Anmeldepause wird in `/data` gespeichert und bleibt bei Neustarts
