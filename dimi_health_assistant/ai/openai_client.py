@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+from datetime import date
 from typing import Optional
 
 from openai import AsyncOpenAI, PermissionDeniedError
@@ -28,6 +29,27 @@ Priorisiere Schlaf, Erholung, Stress, HRV, Ruhepuls, Body Battery und Körpertre
 Während Reha: Schritte/Training nur Kontext, keine Ziele, Knieübungen oder Belastungssteigerung ohne medizinische Freigabe. Keine Diagnose oder Heilversprechen. Bei neuen/zunehmenden Schmerzen, Schwellung, Rötung/Überwärmung, Fieber, Atemnot oder Wadenschmerz medizinische Abklärung vor Routinetipps.
 Deutsch, nur Emoji-Bullets (•), je 1-2 kurze Sätze. Keine Einleitung, Rohdatenwiederholung oder generischen Warnfloskeln. Erkläre Signal → mögliche Bedeutung → Handlung; höchstens 1-2 Prioritäten. Schlaf als Xh Ymin. Werte relativ zur Abfragezeit; niedrige Body Battery abends allein ist kein Erholungsproblem. Fehlende Daten nicht als null interpretieren.
 """
+
+
+def _briefing_knowledge_query(snapshot: dict, *, evening: bool = False) -> str:
+    """Pick sources from the relevant context without guessing missing values."""
+    readiness = snapshot.get("readiness") or {}
+    factors = " ".join(str(item) for item in (readiness.get("limiting_factors") or []))
+    # Rotate a small set of relevant routine themes by day. These are source
+    # search terms, not a claim that the user has a problem or needs treatment.
+    try:
+        day = date.fromisoformat(str(snapshot.get("date"))).toordinal()
+    except ValueError:
+        day = 0
+    morning = ("Schlaf Tageslicht", "Schlaf Rhythmus", "Schlaf Koffein", "Schlaf Tageslicht")
+    night = ("Schlaf Abendroutine Licht", "Schlaf Rhythmus", "Schlaf Koffein", "Schlaf Abendroutine Licht")
+    topics = [(night if evening else morning)[day % 4]]
+    if factors:
+        topics.append(factors)
+    stress = snapshot.get("avg_stress")
+    if isinstance(stress, (int, float)) and stress >= 50:
+        topics.append("Stress Entspannung")
+    return " ".join(topics)
 
 
 class OpenAIHealthAssistant:
@@ -86,7 +108,7 @@ Datenabfrage: {snapshot.get('fetched_time', 'k.A.')} Uhr
 Format: 3-4 Bullets in dieser Reihenfolge:
 • Erholung/Readiness einordnen
 • stärkstes Signal mit Mechanismus → Bedeutung
-• Handlung nur bei direktem Datenbezug; sonst bewusst "Routine beibehalten"
+• Wenn passend: eine konkrete Priorität oder ein kurzer, belegter Buchimpuls für den Alltag; keine erfundenen Datensignale
 • optional: was morgen beobachtet werden sollte
 Jeder Bullet maximal 22 Wörter.
 Keine reine Rohdatenliste.
@@ -95,7 +117,7 @@ Wiederhole keine Empfehlung aus den letzten Coachingtexten, außer das zugrunde 
 LETZTE COACHINGTEXTE:
 {previous}
 """
-        result = await self._chat(prompt, knowledge_query="Schlaf Erholung Tageslicht Stress")
+        result = await self._chat(prompt, knowledge_query=_briefing_knowledge_query(snapshot))
         await self._remember_coaching("morning", snapshot, result)
         return result
 
@@ -122,7 +144,7 @@ Format: 3-4 Bullets:
 • Tagesurteil
 • stärkstes neue oder bestätigte Signal
 • Zusammenhang zu morgen
-• konkrete Empfehlung nur bei direktem Datenbezug; sonst Routine beibehalten
+• Wenn passend: eine konkrete Empfehlung oder ein kurzer, belegter Buchimpuls für die Abendroutine
 Jeder Bullet maximal 22 Wörter.
 Keine reine Rohdatenliste.
 Body Battery abends als normalen Tagesverbrauch einordnen, nicht pauschal als schlechte Erholung.
@@ -132,7 +154,7 @@ MORGENKONTEXT:
 LETZTE ABENDTEXTE:
 {previous}
 """
-        result = await self._chat(prompt, knowledge_query="Schlaf Abendroutine Stress")
+        result = await self._chat(prompt, knowledge_query=_briefing_knowledge_query(snapshot, evening=True))
         await self._remember_coaching("evening", snapshot, result)
         return result
 

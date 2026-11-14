@@ -42,6 +42,16 @@ class KnowledgeTest(unittest.TestCase):
             self.assertEqual(library.passages("Zahnschmerzen"), [])
             self.assertTrue((Path(tmp) / "knowledge/huberman_index.json").is_file())
 
+    def test_compound_german_questions_find_relevant_source_without_false_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / BOOK_NAME
+            make_epub(source)
+            library = KnowledgeBase(tmp, str(source))
+            library._book["chunks"].append({"section": "Exercise Protocol 2: Resistance Training", "text": "Resistance strength exercise.", "location": "exercise", "offset": 0})
+            self.assertIn("Sleep Protocol", library.passages("Wie verbessere ich meine Schlafqualität?")[0]["section"])
+            self.assertIn("Exercise Protocol", library.passages("Krafttraining")[0]["section"])
+            self.assertEqual(library.passages("Zahnschmerzen"), [])
+
     def test_missing_invalid_and_removed_book_do_not_claim_access(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / BOOK_NAME

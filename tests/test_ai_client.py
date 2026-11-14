@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from ai.openai_client import OpenAIHealthAssistant
+from ai.openai_client import OpenAIHealthAssistant, _briefing_knowledge_query
 from knowledge import KnowledgeBase
 from test_knowledge import make_epub
 
@@ -122,6 +122,16 @@ class OpenAIClientTest(unittest.TestCase):
                 self.assertEqual(asyncio.run(assistant._chat("test")), "OK")
             self.assertEqual(create.await_count, 3)
             self.assertEqual(sleep.await_count, 2)
+
+    def test_briefing_source_query_uses_present_context_not_missing_values(self):
+        morning = _briefing_knowledge_query({"readiness": {"limiting_factors": ["Schlafschuld"]}, "avg_stress": 55})
+        self.assertIn("Schlafschuld", morning)
+        self.assertIn("Stress", morning)
+        self.assertNotIn("Stress", _briefing_knowledge_query({"avg_stress": None}))
+        self.assertIn("Abendroutine", _briefing_knowledge_query({}, evening=True))
+        first = _briefing_knowledge_query({"date": "2026-11-14"})
+        second = _briefing_knowledge_query({"date": "2026-11-15"})
+        self.assertNotEqual(first, second)
 
     def test_chat_caps_output_and_logs_usage_without_content(self):
         response = SimpleNamespace(

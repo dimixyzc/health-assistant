@@ -1,3 +1,8 @@
+# 1.1.5
+
+- Deutsche Fragen und zusammengesetzte Begriffe finden passende englische Buchstellen zuverlässiger.
+- Morgen- und Abendberichte nutzen wechselnde, kontextbezogene Buchstellen und können passende Wissensimpulse mit Quellenangabe einstreuen.
+
 # 1.1.4
 
 - Kurzzeitige GPT-6-Luna-Freigabefehler werden begrenzt erneut versucht.
