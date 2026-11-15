@@ -293,6 +293,7 @@ async def get_weekly_summary() -> dict:
         return round(sum(lst) / len(lst)) if lst else None
 
     return {
+        "training_context": await get_scheduled_training(activities),
         "week_start": monday.isoformat(),
         "week_end": today.isoformat(),
         "total_activities": len(activities),
@@ -442,3 +443,12 @@ def _suggest_session(readiness: dict, weekly: dict) -> str:
     if cardio_remaining > 0:
         return "Cardio: Spinning-Intervalle (z.B. 5×3min Z4) oder Crosstrainer-Tempo, alternativ Rudern/Schwimmen."
     return "Freie Qualitätseinheit (Kraft oder impact-armes Cardio), Gesamtlast im Blick behalten."
+
+
+async def get_scheduled_training(activities: list | None = None) -> dict:
+    """Observed Garmin calendar, never a generated plan or a write operation."""
+    from training_plan.context import get_context, with_activities
+    context = await get_context(settings.garmin_email, settings.garmin_password, settings.data_dir)
+    from training_plan.history import recent_strength
+    context["imported_strength_history"] = recent_strength(settings.data_dir)
+    return with_activities(context, activities or [])

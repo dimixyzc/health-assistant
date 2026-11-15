@@ -590,3 +590,44 @@ def gfit_auth_warning(detail: Optional[str] = None) -> str:
     if detail:
         base += f"\n\n_Detail:_ {_md_safe(detail)}"
     return base
+
+
+def scheduled_training(context: dict) -> str:
+    """Render the observed calendar without requiring an AI call."""
+    if not context.get('available'):
+        return ('📅 *Dein Garmin-Plan*\n\nDer Kalender ist gerade nicht verfügbar; es liegt kein gespeicherter Stand vor. '
+                'Dein lokaler Planentwurf wird dadurch nicht als Garmin-Termin ausgegeben.')
+    today = context['today']
+    workouts = context.get('workouts') or []
+    todays = [w for w in workouts if w['date'] == today]
+    future = [w for w in workouts if w['date'] > today]
+    next_day = min((w['date'] for w in future), default=None)
+    lines = ['📅 *Dein Garmin-Plan*', '']
+    if context.get('stale'):
+        lines += ['⚠️ Garmin ist gerade nicht erreichbar. Das ist der letzte gespeicherte Stand.', '']
+    for title, selected in [('Heute', todays), ('Als Nächstes', [w for w in future if w['date'] == next_day])]:
+        lines.append(f'*{title}*')
+        if not selected:
+            lines += ['Keine Einheit im abgerufenen Kalenderstand gefunden.', '']
+        for workout in selected:
+            lines += [f"• *{_md_safe(workout['title'])}* · {fmt_date_short(workout['date'])}"]
+            if workout.get('estimated_minutes'):
+                lines.append(f"  Geplant: {fmt_duration(workout['estimated_minutes'])}")
+            steps = workout.get('steps') or []
+            if steps:
+                for step in steps[:16]:
+                    text = step.get('description') or (step.get('exercise') or '').replace('_',' ').title()
+                    if not text:
+                        continue
+                    repeat = f"{step['repetitions']}× " if step.get('repetitions') else ''
+                    lines.append(f"  {repeat}{_md_safe(text)}")
+                if len(steps) > 16:
+                    lines.append('  Weitere Schritte stehen in Garmin Connect.')
+            elif workout.get('description'):
+                lines.append(_md_safe(workout['description']))
+            else:
+                lines.append('  Übungsdetails sind für diese Einheit gerade nicht verfügbar.')
+            lines.append('')
+    stamp = str(context.get('fetched_at') or '').replace('T',' ')[:16]
+    lines += [f'Quelle: Garmin-Kalender · Stand: {stamp}', 'Planänderungen besprechen wir weiter in Codex.']
+    return '\n'.join(lines)

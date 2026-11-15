@@ -1,0 +1,7 @@
+node_modules/
+.playwright-mcp/
+*.tar.gz
+.openai/*.tmp
+
+__pycache__/
+*.pyc

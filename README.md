@@ -2,6 +2,10 @@
 
 Persönlicher Gesundheitsassistent für Garmin, Renpho & Google Fit.
 
+## Gemeinsames Trainingsprojekt ab 1.2.0
+
+Der Garmin-Trainingsplaner und Momentum gehören zu diesem Projekt. `/plan` liest den Garmin-Kalender; Telegram beantwortet Trainingsfragen, während Planung und Änderungen bei Codex bleiben. Installation, private Profile, Datenpfade und Betrieb: [Trainingsintegration](docs/TRAINING.md).
+
 ## Tokenarmer Betrieb ab 1.1.1
 
 - Quellenkontext: höchstens zwei lokal ausgewählte Auszüge mit je maximal

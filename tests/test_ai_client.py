@@ -109,6 +109,21 @@ class OpenAIClientTest(unittest.TestCase):
             self.assertNotIn("synthetic workout", completions.kwargs["messages"][-1]["content"])
             self.assertEqual(len(completions.kwargs["messages"]), 3)
 
+    def test_training_calendar_is_bounded_reference_with_read_only_policy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            assistant,completions=self._assistant(tmp)
+            calendar={'available':True,'stale':False,'today':'2026-12-01','source':'garmin_calendar',
+                      'fetched_at':'2026-12-01T12:00:00+01:00',
+                      'workouts':[{'date':'2026-12-01','title':'Synthetic planned workout','type':'cardio','steps':[]}]}
+            asyncio.run(assistant.answer_free_question('Was steht morgen im Plan?',{},[],training_context=calendar))
+            messages=completions.kwargs['messages']
+            self.assertIn('Synthetic planned workout',messages[-1]['content'])
+            self.assertIn('ausschließlich lesenden Zugriff',messages[0]['content'])
+            self.assertEqual(completions.kwargs['max_completion_tokens'],750)
+            assistant._conversation=[]
+            asyncio.run(assistant.answer_free_question('Was ist Protein?',{},[],training_context=calendar))
+            self.assertNotIn('Synthetic planned workout',completions.kwargs['messages'][-1]['content'])
+
     def test_weight_question_keeps_relevant_body_data(self):
         with tempfile.TemporaryDirectory() as tmp:
             assistant, completions = self._assistant(tmp)

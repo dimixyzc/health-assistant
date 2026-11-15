@@ -46,7 +46,7 @@ WEEKLY_CARDIO_GOAL="$(bashio::config 'weekly_cardio_goal' '3')"
 TZ="$(bashio::config 'timezone' 'Europe/Berlin')"
 DATA_DIR="/data"
 
-bashio::log.info "Starting Dimi Health Assistant v1.1.6"
+bashio::log.info "Starting Dimi Health Assistant v1.2.0"
 bashio::log.info "TZ: ${TZ} | Renpho reminder nach: ${RENPHO_REMINDER_DAYS} Tagen | Schlafziel: ${SLEEP_GOAL_MINUTES} min | Cardio-Ziel: ${WEEKLY_CARDIO_GOAL}"
 
 # Google Fit Token aus /share nur übernehmen, wenn /data keinen neueren Token hat.
@@ -60,5 +60,14 @@ if [ -f /share/google_fit_token.json ]; then
         bashio::log.info "Google Fit Token aus /data behalten; /share ist nicht neuer"
     fi
 fi
+
+# Optional private migration seed. Never overwrite an existing runtime database/profile.
+mkdir -p /data/training
+for training_file in training_plan.sqlite3 profile.json; do
+    if [ -f "/share/health-assistant/training-seed/${training_file}" ] && [ ! -e "/data/training/${training_file}" ]; then
+        cp "/share/health-assistant/training-seed/${training_file}" "/data/training/${training_file}"
+        chmod 600 "/data/training/${training_file}"
+    fi
+done
 
 exec python3 -u /opt/health-assistant/main.py

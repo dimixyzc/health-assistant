@@ -363,6 +363,7 @@ async def get_recent_activities(email: str, password: str, data_dir: str, limit:
     for a in activities:
         result.append({
             "activity_id": a.get("activityId"),
+            "workout_id": a.get("workoutId"),
             "name": a.get("activityName"),
             "type": a.get("activityType", {}).get("typeKey", "unknown"),
             "start_time": a.get("startTimeLocal"),

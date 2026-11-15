@@ -9,9 +9,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class AddonReleaseTest(unittest.TestCase):
     def test_shared_runtime_modules_match_addon_build_context(self):
-        for name in ["bot/delivery.py", "bot/scheduler.py", "analytics/formatter.py", "ai/openai_client.py", "ai/client_factory.py", "bot/handlers/commands.py",
-                     "knowledge/__init__.py", "knowledge/library.py", "knowledge/import_epub.py"]:
-            self.assertEqual((ROOT / name).read_bytes(), (ROOT / "dimi_health_assistant" / name).read_bytes(), name)
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('addon_sync', ROOT/'tools/sync_addon.py')
+        sync = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(sync)
+        for name in sync.runtime_paths():
+            self.assertEqual((ROOT / name).read_bytes(), (ROOT / 'dimi_health_assistant' / name).read_bytes(), str(name))
+        forbidden = {'profile.json', 'data.json', '.env', '.openai', 'private'}
+        for path in (ROOT/'dimi_health_assistant').rglob('*'):
+            self.assertFalse(any(part in forbidden for part in path.relative_to(ROOT/'dimi_health_assistant').parts),str(path))
+            self.assertNotIn(path.suffix, ('.epub','.sqlite3','.db'))
 
     def test_saved_legacy_models_migrate_and_explicit_alternative_survives(self):
         script = (ROOT / "dimi_health_assistant/run.sh").read_text()

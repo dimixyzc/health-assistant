@@ -44,6 +44,7 @@ def _week_context(weekly: dict) -> dict:
         "cardio_remaining",
         "total_load",
         "training_trend",
+        "training_context",
         "avg_sleep_minutes",
         "avg_sleep_score",
         "avg_deep_sleep_minutes",

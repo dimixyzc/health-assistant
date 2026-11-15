@@ -58,7 +58,7 @@ async def cmd_start(message: Message) -> None:
         "Ich bin dein persönlicher Gesundheitsassistent. Während deiner Knie-Reha "
         "sind Schritte und Training nur Kontext, keine Ziele.\n\n"
         "/heute — Tages-Snapshot (Schlaf, Erholung, Body Battery)\n"
-        "/plan — Gesundheitsfokus für heute\n"
+        "/plan — Heute und als Nächstes in Garmin\n"
         "/erholung — HRV, Body Battery, Training Readiness\n"
         "/training — Letzte Aktivitäten\n"
         "/woche — Wöchentliche Zusammenfassung\n"
@@ -96,7 +96,8 @@ async def cmd_heute(message: Message) -> None:
         return
     await progress(message, "⏳ Hole Tagesdaten...")
     try:
-        snapshot = await insights.get_daily_snapshot()
+        snapshot, context = await asyncio.gather(insights.get_daily_snapshot(), insights.get_scheduled_training())
+        snapshot["training_context"] = context
         garmin_warning = ""
         try:
             activities = await garmin_conn.get_recent_activities(
@@ -212,14 +213,13 @@ async def cmd_tipps(message: Message) -> None:
 async def cmd_plan(message: Message) -> None:
     if not _authorized(message):
         return
-    await progress(message, "⏳ Erstelle Gesundheitsfokus...")
+    await progress(message, "⏳ Hole deinen Garmin-Plan…")
     try:
-        plan = await insights.get_training_plan()
-        coach_text = await get_ai().generate_plan_explanation(plan)
-        text = formatter.training_plan(plan, coach_text=coach_text)
-    except Exception as e:
-        logger.error("/plan Fehler: %s", type(e).__name__)
-        text = "⚠️ Gesundheitsfokus konnte nicht berechnet werden."
+        context = await insights.get_scheduled_training()
+        text = formatter.scheduled_training(context)
+    except Exception as exc:
+        logger.error("/plan failed: %s", type(exc).__name__)
+        text = "⚠️ Dein Garmin-Kalender ist gerade nicht verfügbar. Bitte versuche es später erneut."
     await _answer_markdown(message, text)
 
 
@@ -274,6 +274,8 @@ async def cmd_freitext(message: Message) -> None:
             ),
             insights.get_weight_trend(days=30),
         ]
+        wants_training = get_ai().wants_training_context(message.text)
+        base_tasks.append(insights.get_scheduled_training() if wants_training else _no_training())
         if _asks_for_hrv_trend(message.text):
             base_tasks.append(insights.get_hrv_trend(days=28))
 
@@ -282,7 +284,8 @@ async def cmd_freitext(message: Message) -> None:
             return_exceptions=True,
         )
         snapshot, activities, weight_trend = results[:3]
-        hrv_trend = results[3] if len(results) > 3 else None
+        training_context = results[3] if not isinstance(results[3], Exception) else {"available": False}
+        hrv_trend = results[4] if len(results) > 4 else None
         if isinstance(snapshot, Exception):
             snapshot = {}
         if isinstance(activities, Exception):
@@ -291,12 +294,16 @@ async def cmd_freitext(message: Message) -> None:
             weight_trend = {"available": False}
         if isinstance(hrv_trend, Exception):
             hrv_trend = {"available": False}
+        if training_context:
+            from training_plan.context import with_activities
+            training_context = with_activities(training_context, activities)
         text = await get_ai().answer_free_question(
             question=message.text,
             snapshot=snapshot,
             activities=activities,
             weight_trend=weight_trend,
             hrv_trend=hrv_trend,
+            training_context=training_context,
         )
     except Exception as e:
         logger.error("Freitext-Fehler: %s", type(e).__name__)
@@ -341,3 +348,7 @@ async def cmd_unknown(message: Message) -> None:
             if message.text else
             "Bitte schick mir deine Frage als Text. Sprachaufnahmen, Fotos und Dateien kann ich hier noch nicht auswerten.")
     await _answer_markdown(message, text)
+
+
+async def _no_training():
+    return None

@@ -17,6 +17,7 @@ COPY ai/ ai/
 COPY knowledge/ knowledge/
 COPY bot/ bot/
 COPY storage/ storage/
+COPY training_plan/ training_plan/
 
 COPY run.sh /run.sh
 RUN chmod a+x /run.sh

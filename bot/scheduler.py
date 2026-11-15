@@ -40,7 +40,8 @@ def bounded_report(handler):
 @bounded_report
 async def send_morning_briefing(bot: Bot, ai: OpenAIHealthAssistant) -> None:
     try:
-        snapshot = await insights.get_daily_snapshot()
+        snapshot, context = await asyncio.gather(insights.get_daily_snapshot(), insights.get_scheduled_training())
+        snapshot["training_context"] = context
         coach_text = await ai.generate_morning_briefing(snapshot)
         text = formatter.morning_briefing(snapshot, coach_text=coach_text)
         await _send_markdown(bot, text)
@@ -53,7 +54,8 @@ async def send_morning_briefing(bot: Bot, ai: OpenAIHealthAssistant) -> None:
 @bounded_report
 async def send_evening_summary(bot: Bot, ai: OpenAIHealthAssistant) -> None:
     try:
-        snapshot = await insights.get_daily_snapshot()
+        snapshot, context = await asyncio.gather(insights.get_daily_snapshot(), insights.get_scheduled_training())
+        snapshot["training_context"] = context
         activities = await garmin_conn.get_recent_activities(
             settings.garmin_email, settings.garmin_password, settings.data_dir, limit=5
         )
@@ -61,6 +63,8 @@ async def send_evening_summary(bot: Bot, ai: OpenAIHealthAssistant) -> None:
             a for a in activities
             if a.get("start_time", "").startswith(snapshot["date"])
         ]
+        from training_plan.context import with_activities
+        snapshot["training_context"] = with_activities(context, today_activities)
         coach_text = await ai.generate_evening_summary(snapshot, today_activities)
         text = formatter.evening_summary(snapshot, today_activities, coach_text=coach_text)
         await _send_markdown(bot, text)
@@ -95,7 +99,7 @@ async def check_google_fit_health(bot: Bot) -> None:
             settings.data_dir,
         )
         status = result.get("status")
-        logger.info("Google Fit Health-Check: status=%s steps=%s", status, result.get("steps"))
+        logger.info("Google Fit Health-Check: status=%s", status)
         if status == "auth_expired":
             await _send_markdown(bot, formatter.gfit_auth_warning(result.get("detail")))
     except Exception as e:

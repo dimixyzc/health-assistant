@@ -1,3 +1,12 @@
+# 1.2.0
+
+- Gemeinsames Projekt für Gesundheitscoaching, lokale Codex-Trainingsplanung und Momentum.
+- `/plan` zeigt die heutige und nächste in Garmin terminierte Einheit, ohne KI-Aufruf.
+- Trainingsfragen und Berichte berücksichtigen einen begrenzten, lesenden Kalenderkontext mit Datenstand.
+- Kalender-Cache mit 15 Minuten Gültigkeit, Ausfallanzeige und Unterstützung mehrerer Einheiten pro Tag; lokale Entwürfe werden nie als Garmin-Termine ausgegeben.
+- Planen, Veröffentlichen und Ändern von Workouts bleiben Aufgaben für Codex; Telegram hat keinen Schreibpfad.
+- Persönliche Profile, Trainingsdaten, Bücher und Hosting-Zuordnungen bleiben außerhalb von Git und Image.
+
 # 1.1.6
 
 - Freitext erkennt Workout-Fragen und nutzt vorhandene Aktivitäten; kurze Rückfragen behalten bis zu zwei Gesprächsschritte für maximal eine Stunde im Arbeitsspeicher.
