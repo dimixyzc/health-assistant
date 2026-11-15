@@ -1,3 +1,12 @@
+# 1.1.6
+
+- Freitext erkennt Workout-Fragen und nutzt vorhandene Aktivitäten; kurze Rückfragen behalten bis zu zwei Gesprächsschritte für maximal eine Stunde im Arbeitsspeicher.
+- Antworten ersetzen die Warte-Nachricht. Sichere HTML-Formatierung, Absätze und Aufteilung langer Texte verbessern die mobile Lesbarkeit.
+- Technische Fehler, Zeitüberschreitungen, unbekannte Befehle und nicht unterstützte Medien erhalten eine verständliche Rückmeldung.
+- OpenAI-Aufrufe haben feste Zeitlimits und höchstens zwei Wiederholungen bei temporären Modellfreigabefehlern; kein Modellwechsel.
+- Trainingswerte sind gerundet, doppelte Handy-Quellen entfernt und unbekannte Renpho-Messhistorie wird nicht mehr als 999 Tage ausgegeben.
+- Fehlerlogs enthalten nur Fehlerklassen statt möglicherweise privater Antwortinhalte.
+
 # 1.1.5
 
 - Deutsche Fragen und zusammengesetzte Begriffe finden passende englische Buchstellen zuverlässiger.

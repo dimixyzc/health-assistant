@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class AddonReleaseTest(unittest.TestCase):
     def test_shared_runtime_modules_match_addon_build_context(self):
-        for name in ["ai/openai_client.py", "ai/client_factory.py", "bot/handlers/commands.py",
+        for name in ["bot/delivery.py", "bot/scheduler.py", "analytics/formatter.py", "ai/openai_client.py", "ai/client_factory.py", "bot/handlers/commands.py",
                      "knowledge/__init__.py", "knowledge/library.py", "knowledge/import_epub.py"]:
             self.assertEqual((ROOT / name).read_bytes(), (ROOT / "dimi_health_assistant" / name).read_bytes(), name)
 

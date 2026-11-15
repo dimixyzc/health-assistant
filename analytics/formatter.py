@@ -71,12 +71,21 @@ def _steps_detail(snapshot: dict) -> str:
     if garmin is not None:
         parts.append(f"Garmin {fmt_steps(garmin, 'garmin')}")
     if phone is not None:
-        parts.append(f"Handy {fmt_steps(phone, 'google_fit')}")
+        parts.append(f"Handy {fmt_steps(phone, '')}")
     if not parts:
         return "Schritte nicht verfügbar"
     used = snapshot.get("steps_source")
     used_label = {"garmin": "Garmin", "google_fit": "Handy", "unbekannt": "keine Quelle"}.get(used, "unbekannt")
-    return " · ".join(parts) + f" · verwendet: {used_label} ({fmt_steps(selected or 0, used)})"
+    return " · ".join(parts) + f" · verwendet: {used_label} ({fmt_steps(selected or 0, '')})"
+
+
+def fmt_number(value, decimals: int = 1) -> str:
+    if value is None:
+        return "–"
+    try:
+        return f"{float(value):.{decimals}f}".rstrip("0").rstrip(".") if decimals else str(round(float(value)))
+    except (TypeError, ValueError):
+        return "–"
 
 
 def fmt_delta(delta: Optional[float], unit: str = "") -> str:
@@ -141,7 +150,7 @@ def _coach_block(text: Optional[str], title: str = "🧠 *Coach*", max_lines: in
         return []
     lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
     spaced_lines = []
-    for line in lines[:max_lines]:
+    for line in lines:
         spaced_lines.extend([line, ""])
     return [title, *spaced_lines]
 
@@ -524,8 +533,8 @@ def activity_list(activities: list) -> str:
         is_run = any(t in atype for t in ("running", "trail", "treadmill"))
 
         dist = f" · {a.get('distance_km')} km" if a.get("distance_km") else ""
-        hr = f" · ❤️ {a.get('avg_hr')} bpm" if a.get("avg_hr") else ""
-        cal = f" · 🔥 {a.get('calories')} kcal" if a.get("calories") else ""
+        hr = f" · ❤️ {fmt_number(a.get('avg_hr'), 0)} bpm" if a.get("avg_hr") else ""
+        cal = f" · 🔥 {fmt_number(a.get('calories'), 0)} kcal" if a.get("calories") else ""
         load = f" · Load {a.get('load')} ({a.get('load_label')})" if a.get("load") is not None else ""
 
         line = (
@@ -549,7 +558,7 @@ def activity_list(activities: list) -> str:
         te_a = a.get("training_effect_aerobic")
         te_an = a.get("training_effect_anaerobic")
         if te_a or te_an:
-            line += f"\n  💪 TE aerob: {te_a or '–'} · anaerob: {te_an or '–'}"
+            line += f"\n  💪 TE aerob: {fmt_number(te_a)} · anaerob: {fmt_number(te_an)}"
 
         # HR-Zonen
         zones_str = fmt_hr_zones(a.get("hr_zones") or [])
@@ -557,10 +566,13 @@ def activity_list(activities: list) -> str:
             line += f"\n{zones_str}"
 
         lines.append(line)
-    return "\n".join(lines)
+    return "\n\n".join(lines)
 
 
-def renpho_reminder(days_since: int) -> str:
+def renpho_reminder(days_since: int | None) -> str:
+    if days_since is None:
+        return ("⚖️ *Renpho: noch keine Messung verfügbar*\n\n"
+                "Ich habe bisher keine Messung empfangen. Falls du dich bereits gewogen hast, prüfe bitte die Synchronisierung in der Renpho-App und den Abruf mit /gewicht.")
     return (
         f"⚖️ *Renpho-Erinnerung*\n\n"
         f"Du hast dich seit {days_since} Tagen nicht gewogen.\n"

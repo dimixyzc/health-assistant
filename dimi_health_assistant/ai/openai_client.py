@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+import time
 from datetime import date
 from typing import Optional
 
@@ -27,7 +28,7 @@ _ATHLETE_PROFILE = """
 Du bist Dimitris evidenzorientierter Gesundheitscoach nach Knie-OP.
 Priorisiere Schlaf, Erholung, Stress, HRV, Ruhepuls, Body Battery und Körpertrends.
 Während Reha: Schritte/Training nur Kontext, keine Ziele, Knieübungen oder Belastungssteigerung ohne medizinische Freigabe. Keine Diagnose oder Heilversprechen. Bei neuen/zunehmenden Schmerzen, Schwellung, Rötung/Überwärmung, Fieber, Atemnot oder Wadenschmerz medizinische Abklärung vor Routinetipps.
-Deutsch, nur Emoji-Bullets (•), je 1-2 kurze Sätze. Keine Einleitung, Rohdatenwiederholung oder generischen Warnfloskeln. Erkläre Signal → mögliche Bedeutung → Handlung; höchstens 1-2 Prioritäten. Schlaf als Xh Ymin. Werte relativ zur Abfragezeit; niedrige Body Battery abends allein ist kein Erholungsproblem. Fehlende Daten nicht als null interpretieren.
+Deutsch, mobil gut lesbar: 2-4 kurze Absätze oder Bullets mit Leerzeilen; pro Absatz höchstens zwei kurze Sätze. Starte mit der Antwort auf die konkrete Frage. Verwende sparsam Emojis und keine doppelten Bullet-Zeichen. Runde Messwerte sinnvoll, übersetze technische Statuscodes. Wiederhole Reha-Vorbehalte nur bei einer konkreten Belastungsfrage oder einem medizinischen Anlass. Keine Einleitung, Rohdatenwiederholung oder generischen Warnfloskeln. Erkläre Signal → mögliche Bedeutung → Handlung; höchstens 1-2 Prioritäten. Schlaf als Xh Ymin. Werte relativ zur Abfragezeit; niedrige Body Battery abends allein ist kein Erholungsproblem. Fehlende Daten nicht als null interpretieren.
 """
 
 
@@ -60,9 +61,11 @@ class OpenAIHealthAssistant:
         data_dir: str = "/data",
         knowledge_book_path: str = "",
     ):
-        self._client = AsyncOpenAI(api_key=api_key)
+        self._client = AsyncOpenAI(api_key=api_key, timeout=12.0, max_retries=0)
         self._model = model
         self._data_dir = data_dir
+        self._conversation = []
+        self._conversation_at = 0.0
         self._knowledge = KnowledgeBase(data_dir, knowledge_book_path)
         status = self._knowledge.status()
         logger.info("Coaching model=%s book_available=%s book_sections=%s",
@@ -296,8 +299,11 @@ Keine generischen Stoppsignale, schweren-Beine-Floskeln oder offensichtlichen Wa
         weight_trend: dict | None = None,
         hrv_trend: dict | None = None,
     ) -> str:
+        # Short, expiring in-memory context for follow-up questions. Never logged.
+        history = self._conversation if time.monotonic() - self._conversation_at < 3600 else []
+        context_question = (question + " " + " ".join(turn['content'] for turn in history if turn['role'] == 'user')).strip()
         include_activities = bool(re.search(
-            r"train|aktiv|sport|lauf|cardio|beweg|schritt|gym|puls|hrv|erhol|zusammenhang|überblick", question.lower()
+            r"workout|einheit|train|aktiv|sport|lauf|cardio|beweg|schritt|gym|puls|hrv|erhol|zusammenhang|überblick", context_question.lower()
         ))
         recent = "\n".join(
             f"- {a.get('start_time', '')[:10]} | {a.get('name', a.get('type', '?'))} | "
@@ -324,7 +330,7 @@ Messungen: {wt.get('measurements_count')} in 30 Tagen · Letzte: {wt.get('latest
         else:
             weight_section = "\nRENPHO: Keine Daten verfügbar."
 
-        if not re.search(r"gewicht|körper|fett|muskel|bmi|renpho|ernähr|protein|eiweiß|wasser|stoffwechsel|gesund|zusammenhang|überblick", question.lower()):
+        if not re.search(r"gewicht|körper|fett|muskel|bmi|renpho|ernähr|protein|eiweiß|wasser|stoffwechsel|gesund|zusammenhang|überblick", context_question.lower()):
             weight_section = ""
 
         ht = hrv_trend or {}
@@ -370,7 +376,14 @@ Bei Fragen zur HRV-Entwicklung: zuerst Verlauf/Trend beantworten, dann Tageswert
 Wenn kein HRV-Verlauf verfügbar ist, klar sagen, dass keine belastbare Entwicklung ableitbar ist.
 Zeitabhängige Werte wie Body Battery relativ zur Abfragezeit interpretieren.
 """
-        return await self._chat(prompt, knowledge_query=question, max_completion_tokens=750)
+        result = await self._chat(prompt, knowledge_query=context_question[:1200], max_completion_tokens=750, history=history)
+        if result:
+            self._conversation = (history + [
+                {"role": "user", "content": question[:600]},
+                {"role": "assistant", "content": result[:600]},
+            ])[-4:]
+            self._conversation_at = time.monotonic()
+        return result
 
     async def generate_training_tip(self, snapshot: dict, recent_activities: list) -> str:
         recent_types = [a.get("type") for a in recent_activities[:5]]
@@ -397,7 +410,7 @@ Format: 3-4 Bullets — 1 Erholungs-Status, dann 2-3 spezifische, sichere Gesund
 
     async def _chat(
         self, user_message: str, knowledge_query: str | None = None,
-        max_completion_tokens: int = 450,
+        max_completion_tokens: int = 450, history: list | None = None,
     ) -> str:
         try:
             # Book excerpts are user-level reference data, below the coaching
@@ -407,13 +420,14 @@ Format: 3-4 Bullets — 1 Erholungs-Status, dann 2-3 spezifische, sichere Gesund
             options = {"reasoning_effort": "none"} if self._model == "gpt-6-luna" else {}
             # A newly allowed model can intermittently return model_not_found
             # while project permissions propagate between API servers.
-            for attempt in range(12):
+            for attempt in range(3):
                 try:
                     response = await self._client.chat.completions.create(
                         model=self._model,
                         messages=[
                             {"role": "system", "content": _ATHLETE_PROFILE + EVIDENCE_POLICY},
                             {"role": "user", "content": sources},
+                            *(history or []),
                             {"role": "user", "content": user_message},
                         ],
                         max_completion_tokens=max_completion_tokens,
@@ -421,9 +435,9 @@ Format: 3-4 Bullets — 1 Erholungs-Status, dann 2-3 spezifische, sichere Gesund
                     )
                     break
                 except PermissionDeniedError as exc:
-                    if self._model != "gpt-6-luna" or exc.code != "model_not_found" or attempt == 11:
+                    if self._model != "gpt-6-luna" or exc.code != "model_not_found" or attempt == 2:
                         raise
-                    logger.warning("OpenAI model access temporarily unavailable; retry %s/11", attempt + 1)
+                    logger.warning("OpenAI model access temporarily unavailable; retry %s/2", attempt + 1)
                     await asyncio.sleep(2)
 
             choice = response.choices[0]
@@ -443,7 +457,7 @@ Format: 3-4 Bullets — 1 Erholungs-Status, dann 2-3 spezifische, sichere Gesund
                     getattr(usage, "total_tokens", None),
                 )
             if refusal:
-                logger.warning(f"OpenAI refusal: {refusal}")
+                logger.warning("OpenAI refused the request")
                 return ""
             if choice.finish_reason == "length":
                 logger.warning("OpenAI output truncated; using existing report fallback")
@@ -453,7 +467,7 @@ Format: 3-4 Bullets — 1 Erholungs-Status, dann 2-3 spezifische, sichere Gesund
                 return ""
             return content.strip()
         except Exception as e:
-            logger.error(f"OpenAI Fehler: {e}", exc_info=True)
+            logger.error("OpenAI request failed: %s", type(e).__name__)
             return ""
 
 

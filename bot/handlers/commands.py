@@ -1,12 +1,13 @@
+import asyncio
 import logging
 
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message
 
 from analytics import formatter, insights, metrics
+from bot.delivery import answer as _answer_markdown, progress, ReplyMiddleware
 from ai.client_factory import build_ai_client
 from ai.openai_client import OpenAIHealthAssistant
 from connectors import garmin as garmin_conn
@@ -16,6 +17,7 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 router = Router()
+router.message.outer_middleware(ReplyMiddleware(settings.telegram_chat_id))
 
 _ai: OpenAIHealthAssistant | None = None
 
@@ -47,17 +49,6 @@ def _command_payload(text: str | None) -> str:
     return parts[1].strip() if len(parts) > 1 else ""
 
 
-async def _answer_markdown(message: Message, text: str) -> None:
-    """Send Markdown when valid, otherwise deliver the content as plain text."""
-    try:
-        await message.answer(text, parse_mode="Markdown")
-    except TelegramBadRequest as exc:
-        if "can't parse entities" not in str(exc).lower():
-            raise
-        logger.warning("Ungültiges Markdown in Telegram-Antwort; sende Plaintext-Fallback.")
-        await message.answer(text, parse_mode=None)
-
-
 @router.message(Command("start", "hilfe", "help"))
 async def cmd_start(message: Message) -> None:
     if not _authorized(message):
@@ -75,7 +66,7 @@ async def cmd_start(message: Message) -> None:
         "/experiment_start — 14-Tage-Experiment starten\n"
         "/experimente — Aktive Experimente\n"
         "/tipps — Personalisierter Gesundheitstipp\n"
-        "/status — Schnellübersicht\n"
+        "/status — Schnellübersicht (ohne KI)\n"
         "/wissen — Buchquelle und Modell"
     )
     await message.answer(text, parse_mode=ParseMode.HTML)
@@ -103,7 +94,7 @@ async def cmd_wissen(message: Message) -> None:
 async def cmd_heute(message: Message) -> None:
     if not _authorized(message):
         return
-    await message.answer("⏳ Hole Tagesdaten...")
+    await progress(message, "⏳ Hole Tagesdaten...")
     try:
         snapshot = await insights.get_daily_snapshot()
         garmin_warning = ""
@@ -124,7 +115,7 @@ async def cmd_heute(message: Message) -> None:
             text += "\n\n" + formatter.activity_list(today_activities)
         text += garmin_warning
     except Exception as e:
-        logger.error(f"/heute Fehler: {e}")
+        logger.error("/heute Fehler: %s", type(e).__name__)
         snapshot = {}
         text = "⚠️ Fehler beim Laden der Tagesdaten."
     await _answer_markdown(message, text)
@@ -134,12 +125,12 @@ async def cmd_heute(message: Message) -> None:
 async def cmd_erholung(message: Message) -> None:
     if not _authorized(message):
         return
-    await message.answer("⏳ Hole Erholungsdaten...")
+    await progress(message, "⏳ Hole Erholungsdaten...")
     try:
         snapshot = await insights.get_daily_snapshot()
         text = formatter.recovery_summary(snapshot)
     except Exception as e:
-        logger.error(f"/erholung Fehler: {e}")
+        logger.error("/erholung Fehler: %s", type(e).__name__)
         text = "⚠️ Fehler beim Laden der Erholungsdaten."
     await _answer_markdown(message, text)
 
@@ -148,7 +139,7 @@ async def cmd_erholung(message: Message) -> None:
 async def cmd_training(message: Message) -> None:
     if not _authorized(message):
         return
-    await message.answer("⏳ Hole Aktivitäten...")
+    await progress(message, "⏳ Hole Aktivitäten...")
     try:
         activities = await garmin_conn.get_recent_activities_with_zones(
             settings.garmin_email, settings.garmin_password, settings.data_dir, limit=5
@@ -156,7 +147,7 @@ async def cmd_training(message: Message) -> None:
         activities = metrics.add_activity_loads(activities)
         text = formatter.activity_list(activities)
     except Exception as e:
-        logger.error(f"/training Fehler: {e}")
+        logger.error("/training Fehler: %s", type(e).__name__)
         text = "⚠️ Fehler beim Laden der Aktivitäten."
     await _answer_markdown(message, text)
 
@@ -165,13 +156,13 @@ async def cmd_training(message: Message) -> None:
 async def cmd_woche(message: Message) -> None:
     if not _authorized(message):
         return
-    await message.answer("⏳ Erstelle Wochenanalyse...")
+    await progress(message, "⏳ Erstelle Wochenanalyse...")
     try:
         weekly = await insights.get_weekly_summary()
         coach_text = await get_ai().generate_weekly_summary(weekly)
         text = formatter.weekly_summary(weekly, coach_text=coach_text)
     except Exception as e:
-        logger.error(f"/woche Fehler: {e}")
+        logger.error("/woche Fehler: %s", type(e).__name__)
         text = "⚠️ Fehler beim Laden der Wochendaten."
     await _answer_markdown(message, text)
 
@@ -180,20 +171,20 @@ async def cmd_woche(message: Message) -> None:
 async def cmd_gewicht(message: Message) -> None:
     if not _authorized(message):
         return
-    await message.answer("⏳ Hole Renpho-Daten...")
+    await progress(message, "⏳ Hole Renpho-Daten...")
     try:
         await insights.refresh_renpho_cache()
         trend = await insights.get_weight_trend(days=30)
         coach_text = await get_ai().generate_weight_insight(trend)
         text = formatter.weight_summary(trend, coach_text=coach_text)
     except renpho_conn.RenphoFetchError as e:
-        logger.error(f"/gewicht Renpho-Fehler: {e}")
+        logger.error("/gewicht Renpho-Fehler: %s", type(e).__name__)
         text = (
             "⚠️ Renpho-Daten konnten nicht abgerufen werden.\n"
             "Bitte prüfe E-Mail und Passwort in der Add-on-Konfiguration und starte das Add-on neu."
         )
     except Exception as e:
-        logger.error(f"/gewicht Fehler: {e}")
+        logger.error("/gewicht Fehler: %s", type(e).__name__)
         text = "⚠️ Fehler beim Laden der Körperdaten."
     await _answer_markdown(message, text)
 
@@ -202,7 +193,7 @@ async def cmd_gewicht(message: Message) -> None:
 async def cmd_tipps(message: Message) -> None:
     if not _authorized(message):
         return
-    await message.answer("⏳ Generiere Gesundheitstipp...")
+    await progress(message, "⏳ Generiere Gesundheitstipp...")
     try:
         snapshot = await insights.get_daily_snapshot()
         activities = await garmin_conn.get_recent_activities(
@@ -210,7 +201,7 @@ async def cmd_tipps(message: Message) -> None:
         )
         text = await get_ai().generate_training_tip(snapshot, activities)
     except Exception as e:
-        logger.error(f"/tipps Fehler: {e}")
+        logger.error("/tipps Fehler: %s", type(e).__name__)
         text = ""
     if not text or not text.strip():
         text = "⚠️ Tipp konnte nicht generiert werden. Bitte später erneut versuchen."
@@ -221,13 +212,13 @@ async def cmd_tipps(message: Message) -> None:
 async def cmd_plan(message: Message) -> None:
     if not _authorized(message):
         return
-    await message.answer("⏳ Erstelle Gesundheitsfokus...")
+    await progress(message, "⏳ Erstelle Gesundheitsfokus...")
     try:
         plan = await insights.get_training_plan()
         coach_text = await get_ai().generate_plan_explanation(plan)
         text = formatter.training_plan(plan, coach_text=coach_text)
     except Exception as e:
-        logger.error(f"/plan Fehler: {e}")
+        logger.error("/plan Fehler: %s", type(e).__name__)
         text = "⚠️ Gesundheitsfokus konnte nicht berechnet werden."
     await _answer_markdown(message, text)
 
@@ -239,7 +230,7 @@ async def cmd_experiment_start(message: Message) -> None:
     payload = _command_payload(message.text)
     if not payload:
         await _answer_markdown(
-            "🧪 Nutze: `/experiment_start Name | Hypothese | Zielmetrik`\n"
+            message, "🧪 Nutze: `/experiment_start Name | Hypothese | Zielmetrik`\n"
             "Beispiel: `/experiment_start Koffein vor 12 | besserer Schlaf | Schlafqualität`",
         )
         return
@@ -253,7 +244,7 @@ async def cmd_experiment_start(message: Message) -> None:
         })
         await _answer_markdown(message, formatter.experiment_created(experiment))
     except Exception as e:
-        logger.error(f"/experiment_start Fehler: {e}")
+        logger.error("/experiment_start Fehler: %s", type(e).__name__)
         await _answer_markdown(message, "⚠️ Experiment konnte nicht gestartet werden.")
 
 
@@ -265,7 +256,7 @@ async def cmd_experimente(message: Message) -> None:
         experiments = await db.get_active_experiments(settings.data_dir)
         await _answer_markdown(message, formatter.experiments_list(experiments))
     except Exception as e:
-        logger.error(f"/experimente Fehler: {e}")
+        logger.error("/experimente Fehler: %s", type(e).__name__)
         await _answer_markdown(message, "⚠️ Experimente konnten nicht geladen werden.")
 
 
@@ -274,9 +265,8 @@ async def cmd_freitext(message: Message) -> None:
     """Beantwortet natürlichsprachige Fragen mit vollem Kontext."""
     if not _authorized(message):
         return
-    await message.answer("⏳ Analysiere...")
+    await progress(message, "⏳ Analysiere...")
     try:
-        import asyncio
         base_tasks = [
             insights.get_daily_snapshot(),
             garmin_conn.get_recent_activities(
@@ -287,7 +277,10 @@ async def cmd_freitext(message: Message) -> None:
         if _asks_for_hrv_trend(message.text):
             base_tasks.append(insights.get_hrv_trend(days=28))
 
-        results = await asyncio.gather(*base_tasks, return_exceptions=True)
+        results = await asyncio.gather(
+            *(asyncio.wait_for(task, timeout=25) for task in base_tasks),
+            return_exceptions=True,
+        )
         snapshot, activities, weight_trend = results[:3]
         hrv_trend = results[3] if len(results) > 3 else None
         if isinstance(snapshot, Exception):
@@ -306,10 +299,10 @@ async def cmd_freitext(message: Message) -> None:
             hrv_trend=hrv_trend,
         )
     except Exception as e:
-        logger.error(f"Freitext-Fehler: {e}")
+        logger.error("Freitext-Fehler: %s", type(e).__name__)
         text = ""
     if not text or not text.strip():
-        text = "⚠️ Konnte die Frage nicht beantworten. Bitte anders formulieren."
+        text = "⚠️ Die KI-Antwort ist gerade nicht verfügbar. Deine Frage wurde empfangen. Bitte versuche es später erneut; /status und /training funktionieren ohne KI."
     await _answer_markdown(message, text)
 
 
@@ -317,6 +310,7 @@ async def cmd_freitext(message: Message) -> None:
 async def cmd_status(message: Message) -> None:
     if not _authorized(message):
         return
+    await progress(message, "⏳ Hole Schnellstatus…")
     try:
         snapshot = await insights.get_daily_snapshot()
         latest_weight = await db.get_latest_renpho(settings.data_dir)
@@ -334,6 +328,16 @@ async def cmd_status(message: Message) -> None:
             f"⚖️ Gewicht: {weight_str}"
         )
     except Exception as e:
-        logger.error(f"/status Fehler: {e}")
+        logger.error("/status Fehler: %s", type(e).__name__)
         text = "⚠️ Fehler beim Laden des Status."
+    await _answer_markdown(message, text)
+
+
+@router.message()
+async def cmd_unknown(message: Message) -> None:
+    if not _authorized(message):
+        return
+    text = ("Diesen Befehl kenne ich noch nicht. /hilfe zeigt die verfügbaren Befehle."
+            if message.text else
+            "Bitte schick mir deine Frage als Text. Sprachaufnahmen, Fotos und Dateien kann ich hier noch nicht auswerten.")
     await _answer_markdown(message, text)

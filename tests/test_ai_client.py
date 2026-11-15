@@ -94,6 +94,21 @@ class OpenAIClientTest(unittest.TestCase):
             self.assertNotIn("private workout label", prompt)
             self.assertEqual(completions.kwargs["max_completion_tokens"], 750)
 
+    def test_workout_and_followup_keep_activity_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            assistant, completions = self._assistant(tmp)
+            activities = [{"name": "synthetic workout", "duration_minutes": 30}]
+            asyncio.run(assistant.answer_free_question("Wie war mein letztes workout?", {}, activities))
+            self.assertIn("synthetic workout", completions.kwargs["messages"][-1]["content"])
+            asyncio.run(assistant.answer_free_question("Und im Vergleich?", {}, activities))
+            self.assertIn("synthetic workout", completions.kwargs["messages"][-1]["content"])
+            self.assertEqual(completions.kwargs["messages"][2]["content"], "Wie war mein letztes workout?")
+            self.assertLessEqual(sum(len(t['content']) for t in assistant._conversation), 2400)
+            assistant._conversation_at = 0
+            asyncio.run(assistant.answer_free_question("Protein?", {}, activities))
+            self.assertNotIn("synthetic workout", completions.kwargs["messages"][-1]["content"])
+            self.assertEqual(len(completions.kwargs["messages"]), 3)
+
     def test_weight_question_keeps_relevant_body_data(self):
         with tempfile.TemporaryDirectory() as tmp:
             assistant, completions = self._assistant(tmp)

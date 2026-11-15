@@ -1,10 +1,12 @@
 """
 Proaktive tägliche/wöchentliche Nachrichten via APScheduler.
 """
+import asyncio
+from functools import wraps
 import logging
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramBadRequest
+from bot.delivery import send_text
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -19,16 +21,23 @@ logger = logging.getLogger(__name__)
 
 
 async def _send_markdown(bot: Bot, text: str) -> None:
-    """Send Markdown when valid, otherwise deliver the content as plain text."""
-    try:
-        await bot.send_message(settings.telegram_chat_id, text, parse_mode="Markdown")
-    except TelegramBadRequest as exc:
-        if "can't parse entities" not in str(exc).lower():
-            raise
-        logger.warning("Ungültiges Markdown in geplanter Nachricht; sende Plaintext-Fallback.")
-        await bot.send_message(settings.telegram_chat_id, text, parse_mode=None)
+    async def send(text, **kwargs):
+        return await bot.send_message(settings.telegram_chat_id, text, **kwargs)
+    await send_text(send, text)
 
 
+def bounded_report(handler):
+    @wraps(handler)
+    async def run(bot, ai):
+        try:
+            return await asyncio.wait_for(handler(bot, ai), timeout=80)
+        except TimeoutError:
+            logger.warning("Scheduled report deadline exceeded: %s", handler.__name__)
+            await _send_markdown(bot, "⌛ Dein geplanter Bericht konnte wegen einer Zeitüberschreitung nicht fertiggestellt werden. /status zeigt deine verfügbaren Tageswerte.")
+    return run
+
+
+@bounded_report
 async def send_morning_briefing(bot: Bot, ai: OpenAIHealthAssistant) -> None:
     try:
         snapshot = await insights.get_daily_snapshot()
@@ -37,10 +46,11 @@ async def send_morning_briefing(bot: Bot, ai: OpenAIHealthAssistant) -> None:
         await _send_markdown(bot, text)
         logger.info("Morgen-Briefing gesendet")
     except Exception as e:
-        logger.error(f"Morgen-Briefing Fehler: {e}")
+        logger.error("Morgen-Briefing Fehler: %s", type(e).__name__)
         await bot.send_message(settings.telegram_chat_id, "⚠️ Morgen-Briefing konnte nicht geladen werden.")
 
 
+@bounded_report
 async def send_evening_summary(bot: Bot, ai: OpenAIHealthAssistant) -> None:
     try:
         snapshot = await insights.get_daily_snapshot()
@@ -56,9 +66,11 @@ async def send_evening_summary(bot: Bot, ai: OpenAIHealthAssistant) -> None:
         await _send_markdown(bot, text)
         logger.info("Abend-Zusammenfassung gesendet")
     except Exception as e:
-        logger.error(f"Abend-Zusammenfassung Fehler: {e}")
+        logger.error("Abend-Zusammenfassung Fehler: %s", type(e).__name__)
+        await _send_markdown(bot, "⚠️ Der Tagesabschluss ist gerade nicht verfügbar. Du kannst /status erneut abrufen.")
 
 
+@bounded_report
 async def send_weekly_review(bot: Bot, ai: OpenAIHealthAssistant) -> None:
     try:
         weekly = await insights.get_weekly_summary()
@@ -67,7 +79,8 @@ async def send_weekly_review(bot: Bot, ai: OpenAIHealthAssistant) -> None:
         await _send_markdown(bot, text)
         logger.info("Wochen-Review gesendet")
     except Exception as e:
-        logger.error(f"Wochen-Review Fehler: {e}")
+        logger.error("Wochen-Review Fehler: %s", type(e).__name__)
+        await _send_markdown(bot, "⚠️ Der Wochenrückblick ist gerade nicht verfügbar. Bitte versuche später /woche.")
 
 
 async def check_google_fit_health(bot: Bot) -> None:
@@ -93,12 +106,11 @@ async def check_renpho_reminder(bot: Bot) -> None:
     try:
         days = await db.days_since_last_renpho(settings.data_dir)
         if days is None or days >= settings.renpho_reminder_days:
-            actual_days = days or 999
-            text = formatter.renpho_reminder(actual_days)
+            text = formatter.renpho_reminder(days)
             await _send_markdown(bot, text)
-            logger.info(f"Renpho-Erinnerung gesendet (letzte Messung vor {actual_days} Tagen)")
+            logger.info("Renpho-Erinnerung gesendet")
     except Exception as e:
-        logger.error(f"Renpho-Reminder Fehler: {e}")
+        logger.error("Renpho-Reminder Fehler: %s", type(e).__name__)
 
 
 def setup_scheduler(bot: Bot, ai: OpenAIHealthAssistant) -> AsyncIOScheduler:
