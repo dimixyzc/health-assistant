@@ -1,3 +1,9 @@
+# 1.2.1
+
+- Renpho-Bibliothek auf getestete Version 0.5.0 aktualisiert: erforderliche Login-Header verhindern den Entschlüsselungsfehler `-114`.
+- `/gewicht` unterscheidet abgelehnte Zugangsdaten von technischen API- und Verbindungsfehlern.
+- Renpho-Anfragen erhalten Verbindungs-/Lesezeitlimits; Fehlerlogs enthalten keine privaten Serverantworten oder Tracebacks.
+
 # 1.2.0
 
 - Gemeinsames Projekt für Gesundheitscoaching, lokale Codex-Trainingsplanung und Momentum.

@@ -178,11 +178,17 @@ async def cmd_gewicht(message: Message) -> None:
         trend = await insights.get_weight_trend(days=30)
         coach_text = await get_ai().generate_weight_insight(trend)
         text = formatter.weight_summary(trend, coach_text=coach_text)
+    except renpho_conn.RenphoAuthenticationError:
+        text = (
+            "⚠️ Renpho hat die Anmeldung abgelehnt.\n"
+            "Bitte prüfe E-Mail und Passwort in der Add-on-Konfiguration und starte das Add-on neu."
+        )
     except renpho_conn.RenphoFetchError as e:
         logger.error("/gewicht Renpho-Fehler: %s", type(e).__name__)
         text = (
-            "⚠️ Renpho-Daten konnten nicht abgerufen werden.\n"
-            "Bitte prüfe E-Mail und Passwort in der Add-on-Konfiguration und starte das Add-on neu."
+            "⚠️ Renpho-Daten konnten wegen eines technischen Verbindungs- oder API-Fehlers "
+            "nicht abgerufen werden. Bitte versuche es später erneut.\n"
+            "Das bedeutet nicht, dass deine Zugangsdaten falsch sind."
         )
     except Exception as e:
         logger.error("/gewicht Fehler: %s", type(e).__name__)

@@ -10,10 +10,17 @@ class RenphoFetchError(RuntimeError):
     """Raised when the Renpho API cannot be queried."""
 
 
+class RenphoAuthenticationError(RenphoFetchError):
+    """Raised only when Renpho explicitly rejects the account credentials."""
+
+
 def _make_client(email: str, password: str):
-    from renpho import RenphoClient
-    client = RenphoClient(email, password)
-    client.login()
+    from renpho import RenphoAuthError, RenphoClient
+    client = RenphoClient(email, password, timeout=(5, 15))
+    try:
+        client.login()
+    except RenphoAuthError:
+        raise RenphoAuthenticationError("Renpho rejected the login") from None
     return client
 
 
@@ -26,9 +33,11 @@ async def get_latest_measurement(email: str, password: str) -> Optional[dict]:
             if not measurements:
                 return None
             return _parse_measurement(measurements[0])  # neueste zuerst
+        except RenphoAuthenticationError:
+            raise
         except Exception as e:
-            logger.exception("Renpho Fehler")
-            raise RenphoFetchError("Renpho API request failed") from e
+            logger.error("Renpho Fehler: %s", type(e).__name__)
+            raise RenphoFetchError("Renpho API request failed") from None
 
     return await asyncio.to_thread(_fetch)
 
@@ -48,9 +57,11 @@ async def get_measurements_since(email: str, password: str, days: int = 30) -> l
                 if parsed and parsed.get("date") and parsed["date"] >= cutoff.isoformat():
                     result.append(parsed)
             return sorted(result, key=lambda x: x["date"])
+        except RenphoAuthenticationError:
+            raise
         except Exception as e:
-            logger.exception("Renpho Trend-Fehler")
-            raise RenphoFetchError("Renpho API request failed") from e
+            logger.error("Renpho Trend-Fehler: %s", type(e).__name__)
+            raise RenphoFetchError("Renpho API request failed") from None
 
     return await asyncio.to_thread(_fetch)
 

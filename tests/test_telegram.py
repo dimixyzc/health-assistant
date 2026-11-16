@@ -79,6 +79,21 @@ class TelegramTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('999', send.call_args.args[1])
         self.assertIn('keine Messung', send.call_args.args[1])
 
+    async def test_weight_command_distinguishes_credentials_from_api_failure(self):
+        cases = (
+            (commands.renpho_conn.RenphoFetchError("synthetic"), "technischen", False),
+            (commands.renpho_conn.RenphoAuthenticationError("synthetic"), "Anmeldung abgelehnt", True),
+        )
+        for error, expected, asks_for_password in cases:
+            event, _ = message('/gewicht')
+            with patch.object(commands.settings, 'telegram_chat_id', 1), \
+                 patch.object(commands.insights, 'refresh_renpho_cache', AsyncMock(side_effect=error)), \
+                 patch.object(commands, '_answer_markdown', AsyncMock()) as send:
+                await commands.cmd_gewicht(event)
+            text = send.call_args.args[1]
+            self.assertIn(expected, text)
+            self.assertEqual('Bitte prüfe E-Mail und Passwort' in text, asks_for_password)
+
     def test_external_html_and_broken_markdown_are_safe(self):
         self.assertEqual(telegram_html('**Title** <script>&</script> _ok_ google_fit'),
                          '<b>Title</b> &lt;script&gt;&amp;&lt;/script&gt; <i>ok</i> google_fit')

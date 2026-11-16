@@ -1,6 +1,6 @@
 [project]
 name = "personal-health-assistant"
-version = "1.2.0"
+version = "1.2.1"
 description = "Health coaching, read-only training context and local Codex planning"
 requires-python = ">=3.12"
 dynamic = ["dependencies"]
